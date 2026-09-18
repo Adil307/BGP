@@ -1,0 +1,31 @@
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "ChangeThis_Qatar_2026!"
+    ports:
+      - "1433:1433"
+    volumes:
+      - sql_data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'ChangeThis_Qatar_2026!' -C -Q 'SELECT 1' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+  web:
+    build:
+      context: ./ContractorOperations.Web
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__DefaultConnection: "Server=sqlserver;Database=ContractorOperationsDB;User Id=sa;Password=ChangeThis_Qatar_2026!;TrustServerCertificate=True;MultipleActiveResultSets=true"
+      Application__CompanyName: "Your Company"
+      Application__CompanyTagline: "Build | Operate | Grow"
+      Application__SeedDemoData: "false"
+    ports:
+      - "8080:8080"
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+volumes:
+  sql_data:

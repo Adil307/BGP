@@ -1,0 +1,9 @@
+@model RolePermissionVm
+@using Microsoft.AspNetCore.Identity
+@{ ViewData["Title"]="Permissions"; var roles=(List<IdentityRole>)ViewBag.Roles; }
+<div class="page-heading"><div><h1>Granular Permissions</h1><p>Control access at module/action level. User-level overrides are available from the Users page.</p></div></div>
+<section class="panel mb-3"><form method="get" class="d-flex gap-2 align-items-end"><div class="flex-grow-1"><label class="form-label">Select Role</label><select class="form-select" name="roleId" onchange="this.form.submit()">@foreach(var r in roles){<option value="@r.Id" selected="@(r.Id==Model.RoleId)">@r.Name</option>}</select></div></form></section>
+@if(!string.IsNullOrWhiteSpace(Model.RoleId)){
+<form asp-action="SaveRole" method="post"><input type="hidden" name="roleId" value="@Model.RoleId"/><section class="panel"><div class="panel-head"><div><h3>@Model.RoleName Permissions</h3><p class="text-muted mb-0">Check exactly what this role is allowed to do.</p></div><button class="btn btn-primary">Save Permissions</button></div>
+@foreach(var group in Model.Permissions.GroupBy(x=>x.Group)){<div class="permission-group"><h4>@group.Key</h4><div class="permission-grid">@foreach(var p in group){<label class="permission-card"><input type="checkbox" name="permissionIds" value="@p.Id" checked="@Model.GrantedPermissionIds.Contains(p.Id)"/><span><strong>@p.Name</strong><small>@p.Key</small></span></label>}</div></div>}
+<div class="form-actions"><button class="btn btn-primary">Save Permissions</button></div></section></form>}

@@ -1,0 +1,20 @@
+## .NET / Visual Studio
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+## Logs / runtime
+logs/
+*.log
+
+## Local secrets / production overrides
+appsettings.Production.json
+secrets.json
+
+## OS
+.DS_Store
+Thumbs.db

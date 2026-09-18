@@ -1,0 +1,55 @@
+@model SheetIndexVm
+@inject IPermissionService PermissionService
+@{
+    ViewData["Title"] = "Sheets";
+    var canManage = await PermissionService.HasPermissionAsync(User, "Sheets.Manage");
+    var selectedProject = Context.Request.Query["projectId"].ToString();
+    var selectedDepartment = Context.Request.Query["departmentId"].ToString();
+}
+
+<div class="page-heading">
+    <div><h1>Sheets</h1><p>Project and department sheets with dynamic rows, columns and auto-generated IDs.</p></div>
+    @if (canManage) { <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addSheetModal"><i class="bi bi-plus-lg"></i> Add Sheet</button> }
+</div>
+
+<section class="panel mb-3">
+    <form method="get" class="form-grid-3 align-items-end">
+        <div><label class="form-label">Project</label><select class="form-select" name="projectId"><option value="">All Projects</option>@foreach(var p in Model.Projects){if(selectedProject==p.Id.ToString()){<option value="@p.Id" selected>@p.Name</option>}else{<option value="@p.Id">@p.Name</option>}}</select></div>
+        <div><label class="form-label">Department</label><select class="form-select" name="departmentId"><option value="">All Departments</option>@foreach(var d in Model.Departments){if(selectedDepartment==d.Id.ToString()){<option value="@d.Id" selected>@d.Name</option>}else{<option value="@d.Id">@d.Name</option>}}</select></div>
+        <div><button class="btn btn-outline-primary"><i class="bi bi-funnel"></i> Filter</button> <a class="btn btn-light border" asp-action="Index">Clear</a></div>
+    </form>
+</section>
+
+<div class="sheet-card-grid">
+@foreach (var sheet in Model.Sheets)
+{
+    <a class="sheet-card" asp-action="Details" asp-route-id="@sheet.Id">
+        <div class="sheet-card-top"><span class="sheet-icon"><i class="bi bi-table"></i></span><span class="sheet-id">@sheet.UniqueId</span></div>
+        <h4>@sheet.Name</h4>
+        <p>@(sheet.Project != null ? $"Project: {sheet.Project.Name}" : sheet.Department != null ? $"Department: {sheet.Department.Name}" : "General sheet")</p>
+        <span class="sheet-open">Open Sheet <i class="bi bi-arrow-right"></i></span>
+    </a>
+}
+</div>
+
+@if (!Model.Sheets.Any())
+{
+    <section class="panel empty-state"><i class="bi bi-table"></i><h3>No sheets found</h3><p>Create a project or department sheet to start recording data.</p></section>
+}
+
+@if (canManage)
+{
+<div class="modal fade" id="addSheetModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0 shadow">
+        <div class="modal-header"><h5 class="modal-title">Add Sheet</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+        <form asp-action="Create" method="post">
+            <div class="modal-body">
+                <div class="mb-3"><label class="form-label">Sheet Name</label><input class="form-control" name="name" placeholder="e.g. Expense Sheet" required /></div>
+                <div class="mb-3"><label class="form-label">Project (optional)</label><select class="form-select" name="projectId"><option value="">-- None --</option>@foreach(var p in Model.Projects){<option value="@p.Id">@p.Name</option>}</select></div>
+                <div><label class="form-label">Department (optional)</label><select class="form-select" name="departmentId"><option value="">-- None --</option>@foreach(var d in Model.Departments){<option value="@d.Id">@d.Name</option>}</select><small class="text-muted">Choose at least one project or department.</small></div>
+            </div>
+            <div class="modal-footer"><button class="btn btn-light border" type="button" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary">Create Sheet</button></div>
+        </form>
+    </div></div>
+</div>
+}

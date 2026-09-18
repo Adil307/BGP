@@ -1,0 +1,65 @@
+@model InventoryRequestListVm
+@{
+    ViewData["Title"] = "Inventory Requests";
+    var currentStatus = Context.Request.Query["status"].ToString();
+}
+
+<div class="page-heading">
+    <div><h1>Inventory Requests</h1><p>Submit, review, accept, reject, issue and return project inventory requests.</p></div>
+    <a class="btn btn-primary" asp-action="Create"><i class="bi bi-plus-lg"></i> New Request</a>
+</div>
+
+<div class="kpi-grid inventory-request-kpis">
+    <a class="kpi blue text-decoration-none" asp-action="Index"><div class="kpi-icon"><i class="bi bi-boxes"></i></div><div><strong>@Model.Total</strong><span>Total Requests</span><small>All visible requests</small></div></a>
+    <a class="kpi amber text-decoration-none" asp-action="Index" asp-route-status="Pending"><div class="kpi-icon"><i class="bi bi-hourglass-split"></i></div><div><strong>@Model.Pending</strong><span>Pending</span><small>Waiting for decision</small></div></a>
+    <a class="kpi green text-decoration-none" asp-action="Index" asp-route-status="Accepted"><div class="kpi-icon"><i class="bi bi-check-circle"></i></div><div><strong>@Model.Accepted</strong><span>Accepted</span><small>Approved requests</small></div></a>
+    <a class="kpi red text-decoration-none" asp-action="Index" asp-route-status="Rejected"><div class="kpi-icon"><i class="bi bi-x-circle"></i></div><div><strong>@Model.Rejected</strong><span>Rejected</span><small>Declined requests</small></div></a>
+</div>
+
+<section class="panel mt-3 p-0 overflow-hidden">
+    <div class="table-responsive">
+        <table class="table align-middle mb-0 request-table">
+            <thead><tr><th>Request ID</th><th>Item</th><th>Project / Department</th><th>Qty</th><th>Requested By</th><th>Required</th><th>Status</th><th>Decision / Action</th></tr></thead>
+            <tbody>
+            @if (!Model.Requests.Any())
+            {
+                <tr><td colspan="8" class="text-center text-muted py-5">No inventory requests found.</td></tr>
+            }
+            @foreach(var r in Model.Requests)
+            {
+                var statusClass = r.Status switch { InventoryRequestStatus.Pending => "warning", InventoryRequestStatus.Accepted => "success", InventoryRequestStatus.Rejected => "danger", InventoryRequestStatus.Issued => "primary", InventoryRequestStatus.Returned => "secondary", _ => "secondary" };
+                <tr>
+                    <td><strong>@r.RequestNumber</strong><small class="d-block text-muted">@r.RequestDate.ToString("dd MMM yyyy")</small></td>
+                    <td><strong>@r.ItemName</strong><small class="d-block text-muted">@r.Category</small><small class="d-block text-muted">@r.Purpose</small></td>
+                    <td><span>@(r.Project?.Name ?? "No project")</span><small class="d-block text-muted">@r.Department?.Name</small></td>
+                    <td><strong>@r.Quantity.ToString("0.###")</strong> @r.Unit @if(r.ApprovedQuantity.HasValue){<small class="d-block text-success">Approved: @r.ApprovedQuantity.Value.ToString("0.###")</small>}</td>
+                    <td>@(r.RequestedByUser?.FullName ?? r.RequestedByUser?.Email)</td>
+                    <td>@(r.RequiredDate?.ToString("dd MMM yyyy") ?? "—")</td>
+                    <td><span class="badge text-bg-@statusClass">@r.Status</span>@if(!string.IsNullOrWhiteSpace(r.RejectionReason)){<small class="d-block text-danger mt-1">@r.RejectionReason</small>}</td>
+                    <td>
+                        @if (Model.CanApprove && r.Status == InventoryRequestStatus.Pending)
+                        {
+                            <div class="request-actions-stack">
+                                <form asp-action="Accept" method="post" class="request-inline-action"><input type="hidden" name="id" value="@r.Id"/><input class="form-control form-control-sm" type="number" step="0.001" min="0.001" name="approvedQuantity" value="@r.Quantity" title="Approved quantity"/><button class="btn btn-sm btn-success"><i class="bi bi-check-lg"></i> Accept</button></form>
+                                <form asp-action="Reject" method="post" class="request-inline-action"><input type="hidden" name="id" value="@r.Id"/><input class="form-control form-control-sm" name="rejectionReason" placeholder="Reason" required/><button class="btn btn-sm btn-outline-danger"><i class="bi bi-x-lg"></i> Reject</button></form>
+                            </div>
+                        }
+                        else if (Model.CanApprove && r.Status == InventoryRequestStatus.Accepted)
+                        {
+                            <form asp-action="SetStatus" method="post"><input type="hidden" name="id" value="@r.Id"/><input type="hidden" name="status" value="Issued"/><button class="btn btn-sm btn-outline-primary"><i class="bi bi-box-arrow-up"></i> Mark Issued</button></form>
+                        }
+                        else if (Model.CanApprove && r.Status == InventoryRequestStatus.Issued)
+                        {
+                            <form asp-action="SetStatus" method="post"><input type="hidden" name="id" value="@r.Id"/><input type="hidden" name="status" value="Returned"/><button class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-return-left"></i> Mark Returned</button></form>
+                        }
+                        else
+                        {
+                            <span class="text-muted small">@(r.ApprovedByUser?.FullName ?? "—")</span>
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</section>

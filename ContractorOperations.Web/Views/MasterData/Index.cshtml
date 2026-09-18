@@ -1,0 +1,125 @@
+@model MasterDataVm
+@{ ViewData["Title"] = "Master Data"; }
+
+<div class="page-heading">
+    <div><h1>Master Data</h1><p>Maintain dropdown values without changing application code.</p></div>
+</div>
+
+<div class="master-intro">
+    <div>
+        <h2>System Setup</h2>
+        <p>Add a new project, department, contractor, currency, unit, stock category or warehouse here. New active records become available in the relevant forms automatically.</p>
+    </div>
+    <div class="master-help"><i class="bi bi-lightbulb"></i><span>Select a category below, add the new record, then return to your job or inventory form.</span></div>
+</div>
+
+<div class="master-tabs">
+    <a class="@(Model.Type=="projects"?"active":"")" asp-route-type="projects"><i class="bi bi-briefcase"></i>Projects <span class="master-tab-count">@Model.Projects.Count</span></a>
+    <a class="@(Model.Type=="departments"?"active":"")" asp-route-type="departments"><i class="bi bi-diagram-3"></i>Departments <span class="master-tab-count">@Model.Departments.Count</span></a>
+    <a class="@(Model.Type=="contractors"?"active":"")" asp-route-type="contractors"><i class="bi bi-person-gear"></i>Contractors <span class="master-tab-count">@Model.Contractors.Count</span></a>
+    <a class="@(Model.Type=="currencies"?"active":"")" asp-route-type="currencies"><i class="bi bi-cash-coin"></i>Currencies <span class="master-tab-count">@Model.Currencies.Count</span></a>
+    <a class="@(Model.Type=="units"?"active":"")" asp-route-type="units"><i class="bi bi-rulers"></i>Units <span class="master-tab-count">@Model.Units.Count</span></a>
+    <a class="@(Model.Type=="categories"?"active":"")" asp-route-type="categories"><i class="bi bi-tags"></i>Stock Categories <span class="master-tab-count">@Model.StockCategories.Count</span></a>
+    <a class="@(Model.Type=="warehouses"?"active":"")" asp-route-type="warehouses"><i class="bi bi-building"></i>Warehouses <span class="master-tab-count">@Model.Warehouses.Count</span></a>
+</div>
+
+<section class="panel">
+@if (Model.Type == "projects")
+{
+    <div class="master-section-head"><div><h3>Projects</h3><p>Projects appear in the Job Entry project dropdown when active.</p></div></div>
+    <div class="master-add-wrap">
+        <div class="master-add-title"><i class="bi bi-plus-circle"></i>Add New Project</div>
+        <form asp-action="SaveProject" method="post" class="master-add master-add-3"><input type="hidden" name="id" value="0"/><input class="form-control" name="code" placeholder="Project code" required/><input class="form-control" name="name" placeholder="Project name" required/><input type="hidden" name="isActive" value="true"/><button class="btn btn-primary"><i class="bi bi-plus-lg"></i> Add Project</button></form>
+    </div>
+    <div class="master-list">
+    @foreach (var x in Model.Projects)
+    {
+        <form asp-action="SaveProject" method="post" class="master-edit-row"><input type="hidden" name="id" value="@x.Id"/><input class="form-control" name="code" value="@x.Code"/><input class="form-control" name="name" value="@x.Name"/><label class="active-toggle"><input type="checkbox" name="isActive" value="true" checked="@x.IsActive"/><span>Active</span></label><button class="btn btn-sm btn-outline-primary"><i class="bi bi-check2"></i> Save</button></form>
+    }
+    </div>
+}
+else if (Model.Type == "departments")
+{
+    <div class="master-section-head"><div><h3>Departments</h3><p>Departments control job ownership, reporting and user data scope.</p></div></div>
+    <div class="master-add-wrap">
+        <div class="master-add-title"><i class="bi bi-plus-circle"></i>Add New Department</div>
+        <form asp-action="SaveDepartment" method="post" class="master-add master-add-3"><input type="hidden" name="id" value="0"/><input class="form-control" name="code" placeholder="Department code" required/><input class="form-control" name="name" placeholder="Department name" required/><input type="hidden" name="isActive" value="true"/><button class="btn btn-primary"><i class="bi bi-plus-lg"></i> Add Department</button></form>
+    </div>
+    <div class="master-list">
+    @foreach (var x in Model.Departments)
+    {
+        <form asp-action="SaveDepartment" method="post" class="master-edit-row"><input type="hidden" name="id" value="@x.Id"/><input class="form-control" name="code" value="@x.Code"/><input class="form-control" name="name" value="@x.Name"/><label class="active-toggle"><input type="checkbox" name="isActive" value="true" checked="@x.IsActive"/><span>Active</span></label><button class="btn btn-sm btn-outline-primary"><i class="bi bi-check2"></i> Save</button></form>
+    }
+    </div>
+}
+else if (Model.Type == "contractors")
+{
+    <div class="master-section-head"><div><h3>Contractors</h3><p>Maintain contractor contact details and availability for job selection.</p></div></div>
+    <div class="master-add-wrap">
+        <div class="master-add-title"><i class="bi bi-plus-circle"></i>Add New Contractor</div>
+        <form asp-action="SaveContractor" method="post" class="master-add contractor-add"><input type="hidden" name="id" value="0"/><input class="form-control" name="name" placeholder="Contractor name" required/><input class="form-control" name="contactPerson" placeholder="Contact person"/><input class="form-control" name="phone" placeholder="Phone"/><input class="form-control" name="email" placeholder="Email"/><input type="hidden" name="isActive" value="true"/><button class="btn btn-primary"><i class="bi bi-plus-lg"></i> Add Contractor</button></form>
+    </div>
+    <div class="master-list">
+    @foreach (var x in Model.Contractors)
+    {
+        <form asp-action="SaveContractor" method="post" class="master-edit-row contractor-row"><input type="hidden" name="id" value="@x.Id"/><input class="form-control" name="name" value="@x.Name"/><input class="form-control" name="contactPerson" value="@x.ContactPerson" placeholder="Contact"/><input class="form-control" name="phone" value="@x.Phone" placeholder="Phone"/><input class="form-control" name="email" value="@x.Email" placeholder="Email"/><label class="active-toggle"><input type="checkbox" name="isActive" value="true" checked="@x.IsActive"/><span>Active</span></label><button class="btn btn-sm btn-outline-primary"><i class="bi bi-check2"></i> Save</button></form>
+    }
+    </div>
+}
+else if (Model.Type == "currencies")
+{
+    <div class="master-section-head"><div><h3>Currencies</h3><p>Keep QAR, USD and any future currencies separate for accurate reporting.</p></div></div>
+    <div class="master-add-wrap">
+        <div class="master-add-title"><i class="bi bi-plus-circle"></i>Add New Currency</div>
+        <form asp-action="SaveCurrency" method="post" class="master-add"><input type="hidden" name="id" value="0"/><input class="form-control" name="code" maxlength="3" placeholder="QAR" required/><input class="form-control" name="name" placeholder="Currency name" required/><input class="form-control" name="symbol" placeholder="Symbol"/><input type="hidden" name="isActive" value="true"/><button class="btn btn-primary"><i class="bi bi-plus-lg"></i> Add</button></form>
+    </div>
+    <div class="master-list">
+    @foreach (var x in Model.Currencies)
+    {
+        <form asp-action="SaveCurrency" method="post" class="master-edit-row"><input type="hidden" name="id" value="@x.Id"/><input class="form-control" name="code" value="@x.Code"/><input class="form-control" name="name" value="@x.Name"/><input class="form-control" name="symbol" value="@x.Symbol" placeholder="Symbol"/><label class="active-toggle"><input type="checkbox" name="isActive" value="true" checked="@x.IsActive"/><span>Active</span></label><button class="btn btn-sm btn-outline-primary"><i class="bi bi-check2"></i> Save</button></form>
+    }
+    </div>
+}
+else if (Model.Type == "units")
+{
+    <div class="master-section-head"><div><h3>Units</h3><p>Units are used for job quantities and stock items.</p></div></div>
+    <div class="master-add-wrap">
+        <div class="master-add-title"><i class="bi bi-plus-circle"></i>Add New Unit</div>
+        <form asp-action="SaveUnit" method="post" class="master-add master-add-3"><input type="hidden" name="id" value="0"/><input class="form-control" name="code" placeholder="EA" required/><input class="form-control" name="name" placeholder="Each" required/><input type="hidden" name="isActive" value="true"/><button class="btn btn-primary"><i class="bi bi-plus-lg"></i> Add</button></form>
+    </div>
+    <div class="master-list">
+    @foreach (var x in Model.Units)
+    {
+        <form asp-action="SaveUnit" method="post" class="master-edit-row"><input type="hidden" name="id" value="@x.Id"/><input class="form-control" name="code" value="@x.Code"/><input class="form-control" name="name" value="@x.Name"/><label class="active-toggle"><input type="checkbox" name="isActive" value="true" checked="@x.IsActive"/><span>Active</span></label><button class="btn btn-sm btn-outline-primary"><i class="bi bi-check2"></i> Save</button></form>
+    }
+    </div>
+}
+else if (Model.Type == "categories")
+{
+    <div class="master-section-head"><div><h3>Stock Categories</h3><p>Group inventory items for easier searching and control.</p></div></div>
+    <div class="master-add-wrap">
+        <div class="master-add-title"><i class="bi bi-plus-circle"></i>Add New Stock Category</div>
+        <form asp-action="SaveCategory" method="post" class="master-add master-add-2"><input type="hidden" name="id" value="0"/><input class="form-control" name="name" placeholder="Category name" required/><input type="hidden" name="isActive" value="true"/><button class="btn btn-primary"><i class="bi bi-plus-lg"></i> Add</button></form>
+    </div>
+    <div class="master-list">
+    @foreach (var x in Model.StockCategories)
+    {
+        <form asp-action="SaveCategory" method="post" class="master-edit-row"><input type="hidden" name="id" value="@x.Id"/><input class="form-control" name="name" value="@x.Name"/><label class="active-toggle"><input type="checkbox" name="isActive" value="true" checked="@x.IsActive"/><span>Active</span></label><button class="btn btn-sm btn-outline-primary"><i class="bi bi-check2"></i> Save</button></form>
+    }
+    </div>
+}
+else
+{
+    <div class="master-section-head"><div><h3>Warehouses</h3><p>Add physical or logical stock locations used by inventory transactions.</p></div></div>
+    <div class="master-add-wrap">
+        <div class="master-add-title"><i class="bi bi-plus-circle"></i>Add New Warehouse</div>
+        <form asp-action="SaveWarehouse" method="post" class="master-add master-add-3"><input type="hidden" name="id" value="0"/><input class="form-control" name="name" placeholder="Warehouse name" required/><input class="form-control" name="location" placeholder="Location"/><input type="hidden" name="isActive" value="true"/><button class="btn btn-primary"><i class="bi bi-plus-lg"></i> Add</button></form>
+    </div>
+    <div class="master-list">
+    @foreach (var x in Model.Warehouses)
+    {
+        <form asp-action="SaveWarehouse" method="post" class="master-edit-row"><input type="hidden" name="id" value="@x.Id"/><input class="form-control" name="name" value="@x.Name"/><input class="form-control" name="location" value="@x.Location" placeholder="Location"/><label class="active-toggle"><input type="checkbox" name="isActive" value="true" checked="@x.IsActive"/><span>Active</span></label><button class="btn btn-sm btn-outline-primary"><i class="bi bi-check2"></i> Save</button></form>
+    }
+    </div>
+}
+</section>

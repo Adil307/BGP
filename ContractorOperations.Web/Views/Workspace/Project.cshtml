@@ -1,0 +1,110 @@
+@model ProjectWorkspaceDashboardVm
+@inject IPermissionService PermissionService
+@{
+    ViewData["Title"] = Model.Project.Name;
+    var canManageProject = await PermissionService.HasPermissionAsync(User, "Projects.Manage");
+    var canManageSheets = await PermissionService.HasPermissionAsync(User, "Sheets.Manage");
+    var canCreateJob = await PermissionService.HasPermissionAsync(User, "Jobs.Create");
+    var canRequestInventory = await PermissionService.HasPermissionAsync(User, "Inventory.Requests");
+}
+
+<div class="project-hero">
+    <div>
+        <a class="workspace-back" asp-action="Projects" asp-route-id="@Model.Country.Id"><i class="bi bi-arrow-left"></i> @Model.Country.Name Projects</a>
+        <div class="project-id-chip">@Model.Workspace.UniqueId</div>
+        <h1>@Model.Project.Name</h1>
+        <p>@(string.IsNullOrWhiteSpace(Model.Workspace.Description) ? "Project workspace for jobs, inventory and dynamic operational sheets." : Model.Workspace.Description)</p>
+        <div class="project-meta-line">
+            <span><i class="bi bi-geo-alt"></i> @Model.Country.Name</span>
+            <span><i class="bi bi-person-badge"></i> @(Model.Workspace.ProjectManager ?? "Manager not assigned")</span>
+            <span><i class="bi bi-flag"></i> @Model.Workspace.Priority priority</span>
+            <span><i class="bi bi-activity"></i> @Model.Workspace.Status</span>
+        </div>
+    </div>
+    <div class="page-actions project-actions">
+        @if (canCreateJob) { <a class="btn btn-light border" asp-controller="Jobs" asp-action="Create" asp-route-projectId="@Model.Project.Id"><i class="bi bi-plus-circle"></i> Add Job</a> }
+        @if (canRequestInventory) { <a class="btn btn-light border" asp-controller="InventoryRequests" asp-action="Create" asp-route-projectId="@Model.Project.Id"><i class="bi bi-box-arrow-in-down"></i> Inventory Request</a> }
+        @if (canManageProject) { <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#editProjectModal"><i class="bi bi-pencil"></i> Edit Project</button> }
+    </div>
+</div>
+
+<div class="kpi-grid project-kpis">
+    <div class="kpi blue"><div class="kpi-icon"><i class="bi bi-clipboard2-data"></i></div><div><strong>@Model.JobCount</strong><span>Total Jobs</span><small>@Model.CompletedJobs completed</small></div></div>
+    <div class="kpi purple"><div class="kpi-icon"><i class="bi bi-table"></i></div><div><strong>@Model.Sheets.Count</strong><span>Project Sheets</span><small>Dynamic rows & columns</small></div></div>
+    <div class="kpi amber"><div class="kpi-icon"><i class="bi bi-box-arrow-in-down"></i></div><div><strong>@Model.InventoryRequestCount</strong><span>Inventory Requests</span><small>@Model.PendingInventoryRequests pending</small></div></div>
+    <div class="kpi green"><div class="kpi-icon"><i class="bi bi-speedometer2"></i></div><div><strong>@Model.Workspace.ProgressPercent%</strong><span>Project Progress</span><small>@Model.Workspace.Status</small></div></div>
+</div>
+
+<section class="panel mt-3">
+    <div class="panel-head sheet-section-head">
+        <div><h3>Project Sheets</h3><p>12 starter sheets are created automatically. Add more whenever the project needs them.</p></div>
+        @if (canManageSheets)
+        {
+            <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addSheetModal"><i class="bi bi-plus-lg"></i> Add Sheet</button>
+        }
+    </div>
+    <div class="sheet-card-grid">
+    @foreach (var sheet in Model.Sheets)
+    {
+        <a class="sheet-card" asp-controller="Sheets" asp-action="Details" asp-route-id="@sheet.Id">
+            <div class="sheet-card-top"><span class="sheet-icon"><i class="bi bi-table"></i></span><span class="sheet-id">@sheet.UniqueId</span></div>
+            <h4>@sheet.Name</h4>
+            <p>Open sheet, add rows, create columns and manage records.</p>
+            <span class="sheet-open">Open Sheet <i class="bi bi-arrow-right"></i></span>
+        </a>
+    }
+    </div>
+</section>
+
+@if (canManageSheets)
+{
+<div class="modal fade" id="addSheetModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0 shadow">
+        <div class="modal-header"><h5 class="modal-title">Add Project Sheet</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+        <form asp-controller="Sheets" asp-action="Create" method="post">
+            <input type="hidden" name="projectId" value="@Model.Project.Id" />
+            <div class="modal-body"><label class="form-label">Sheet Name</label><input class="form-control" name="name" placeholder="e.g. Daily Progress Sheet" required /></div>
+            <div class="modal-footer"><button class="btn btn-light border" type="button" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary"><i class="bi bi-plus-lg"></i> Add Sheet</button></div>
+        </form>
+    </div></div>
+</div>
+}
+
+@if (canManageProject)
+{
+<div class="modal fade" id="editProjectModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered"><div class="modal-content border-0 shadow">
+        <div class="modal-header"><div><h5 class="modal-title">Edit @Model.Project.Name</h5><small class="text-muted">Project ID: @Model.Workspace.UniqueId</small></div><button class="btn-close" data-bs-dismiss="modal"></button></div>
+        <form asp-action="UpdateProject" method="post">
+            <input type="hidden" name="projectId" value="@Model.Project.Id" />
+            <div class="modal-body">
+                <div class="form-grid-2">
+                    <div><label class="form-label">Project Name</label><input class="form-control" name="name" value="@Model.Project.Name" required /></div>
+                    <div><label class="form-label">Project Manager</label><input class="form-control" name="projectManager" value="@Model.Workspace.ProjectManager" /></div>
+                    <div><label class="form-label">Start Date</label><input class="form-control" type="date" name="startDate" value="@(Model.Workspace.StartDate?.ToString("yyyy-MM-dd"))" /></div>
+                    <div><label class="form-label">Deadline</label><input class="form-control" type="date" name="deadline" value="@(Model.Workspace.Deadline?.ToString("yyyy-MM-dd"))" /></div>
+                    <div><label class="form-label">Budget</label><input class="form-control" type="number" step="0.01" min="0" name="budget" value="@Model.Workspace.Budget" /></div>
+                    <div><label class="form-label">Priority</label><select class="form-select" name="priority">
+                        @foreach (var value in new[] { "Low", "Medium", "High", "Urgent" })
+                        {
+                            if (string.Equals(Model.Workspace.Priority, value, StringComparison.OrdinalIgnoreCase)) { <option value="@value" selected>@value</option> }
+                            else { <option value="@value">@value</option> }
+                        }
+                    </select></div>
+                    <div><label class="form-label">Status</label><select class="form-select" name="status">
+                        @foreach (var value in new[] { "Active", "Pending", "On Hold", "Completed", "Cancelled" })
+                        {
+                            if (string.Equals(Model.Workspace.Status, value, StringComparison.OrdinalIgnoreCase)) { <option value="@value" selected>@value</option> }
+                            else { <option value="@value">@value</option> }
+                        }
+                    </select></div>
+                    <div><label class="form-label">Progress %</label><input class="form-control" type="number" min="0" max="100" name="progressPercent" value="@Model.Workspace.ProgressPercent" /></div>
+                </div>
+                <div class="mt-3"><label class="form-label">Description</label><textarea class="form-control" name="description" rows="3">@Model.Workspace.Description</textarea></div>
+                <div class="mt-3"><label class="form-label">Notes</label><textarea class="form-control" name="notes" rows="3">@Model.Workspace.Notes</textarea></div>
+            </div>
+            <div class="modal-footer"><button class="btn btn-light border" type="button" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary"><i class="bi bi-check2"></i> Save Changes</button></div>
+        </form>
+    </div></div>
+</div>
+}

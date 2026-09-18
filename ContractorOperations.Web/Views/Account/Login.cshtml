@@ -1,0 +1,17 @@
+@model LoginVm
+@{ ViewData["Title"]="Login"; Layout="_Layout"; }
+<div class="login-page">
+    <div class="login-card">
+        <div class="login-logo"><img src="~/images/bgp-logo.jpeg" alt="BGP logo" class="login-logo-img" /></div>
+        <h1>BGP</h1><p>Project & Operations Management</p>
+        <form method="post">
+            <input type="hidden" asp-for="ReturnUrl" />
+            <div asp-validation-summary="ModelOnly" class="text-danger small mb-3"></div>
+            <label asp-for="Email" class="form-label"></label><input asp-for="Email" class="form-control form-control-lg mb-3" placeholder="name@company.qa" />
+            <label asp-for="Password" class="form-label"></label><input asp-for="Password" class="form-control form-control-lg mb-2" />
+            <div class="form-check mb-4"><input asp-for="RememberMe" class="form-check-input"/><label asp-for="RememberMe" class="form-check-label"></label></div>
+            <button class="btn btn-primary btn-lg w-100">Sign in</button>
+        </form>
+        <div class="login-hint"><strong>First run:</strong> admin@company.qa / ChangeMe123! — change this immediately.</div>
+    </div>
+</div>

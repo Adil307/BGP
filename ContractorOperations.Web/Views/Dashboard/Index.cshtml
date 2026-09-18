@@ -1,0 +1,272 @@
+@model DashboardVm
+@using System.Text.Json
+@inject ContractorOperations.Web.Services.IPermissionService PermissionService
+@{
+    ViewData["Title"] = "Dashboard";
+    var currencies = Model.DepartmentAmounts.SelectMany(x => x.Amounts.Keys).Distinct().OrderBy(x => x).ToList();
+    var canManageProjects = await PermissionService.HasPermissionAsync(User, "Projects.Manage");
+    var canManageDepartments = await PermissionService.HasPermissionAsync(User, "Departments.Manage");
+    var canManageContractors = await PermissionService.HasPermissionAsync(User, "Contractors.Manage");
+    var canManageMasterData = await PermissionService.HasPermissionAsync(User, "MasterData.Manage");
+    var canManageUsers = await PermissionService.HasPermissionAsync(User, "Users.Manage");
+    var canCreateStock = await PermissionService.HasPermissionAsync(User, "Inventory.CreateItem");
+    var canViewInventoryRequests = await PermissionService.HasPermissionAsync(User, "Inventory.Requests");
+}
+
+<div class="dashboard-hero">
+    <div>
+        <div class="eyebrow"><i class="bi bi-stars"></i> Operations Control Center</div>
+        <h1>Welcome, @Model.UserName</h1>
+        <p>Track contractor jobs, department workload, costs and stock activity from one clear dashboard.</p>
+    </div>
+    <div class="page-actions dashboard-actions">
+        @if (canManageProjects)
+        {
+            <a class="btn btn-light border" asp-controller="Workspace" asp-action="Index"><i class="bi bi-briefcase"></i> Projects</a>
+        }
+        <a class="btn btn-primary" asp-controller="Jobs" asp-action="Create"><i class="bi bi-plus-lg"></i> Add New Job</a>
+    </div>
+</div>
+
+<div class="kpi-grid">
+    <div class="kpi blue"><div class="kpi-icon"><i class="bi bi-clipboard2-data"></i></div><div><strong>@Model.TotalJobs</strong><span>Total Jobs Logged</span><small>All accessible jobs</small></div></div>
+    <div class="kpi green"><div class="kpi-icon"><i class="bi bi-check-circle"></i></div><div><strong>@Model.CompletedJobs</strong><span>Completed Jobs</span><small>Closed operations</small></div></div>
+    <div class="kpi amber"><div class="kpi-icon"><i class="bi bi-clock-history"></i></div><div><strong>@Model.InProgressJobs</strong><span>In Progress</span><small>Currently active</small></div></div>
+    <div class="kpi red"><div class="kpi-icon"><i class="bi bi-pause-circle"></i></div><div><strong>@Model.OnHoldCancelledJobs</strong><span>On Hold / Cancelled</span><small>Needs attention</small></div></div>
+</div>
+
+<div class="kpi-grid mt-3 secondary-kpis">
+    <a class="kpi purple text-decoration-none" asp-controller="Workspace" asp-action="Index"><div class="kpi-icon"><i class="bi bi-buildings"></i></div><div><strong>@Model.ProjectCount</strong><span>Active Projects</span><small>@Model.ActiveProjectCount active · @Model.CompletedProjectCount completed · @Model.PendingProjectCount pending</small></div></a>
+    @if (canViewInventoryRequests)
+    {
+        <a class="kpi amber text-decoration-none" asp-controller="InventoryRequests" asp-action="Index" asp-route-status="Pending"><div class="kpi-icon"><i class="bi bi-hourglass-split"></i></div><div><strong>@Model.PendingInventoryRequests</strong><span>Pending Inventory</span><small>@Model.TotalInventoryRequests total requests</small></div></a>
+        <a class="kpi green text-decoration-none" asp-controller="InventoryRequests" asp-action="Index" asp-route-status="Accepted"><div class="kpi-icon"><i class="bi bi-check2-square"></i></div><div><strong>@Model.AcceptedInventoryRequests</strong><span>Accepted Inventory</span><small>Approved requests</small></div></a>
+    }
+    else
+    {
+        <div class="kpi amber"><div class="kpi-icon"><i class="bi bi-hourglass-split"></i></div><div><strong>@Model.PendingInventoryRequests</strong><span>Pending Inventory</span><small>@Model.TotalInventoryRequests total requests</small></div></div>
+        <div class="kpi green"><div class="kpi-icon"><i class="bi bi-check2-square"></i></div><div><strong>@Model.AcceptedInventoryRequests</strong><span>Accepted Inventory</span><small>Approved requests</small></div></div>
+    }
+    <a class="kpi blue text-decoration-none" asp-controller="Sheets" asp-action="Index"><div class="kpi-icon"><i class="bi bi-table"></i></div><div><strong>@Model.SheetCount</strong><span>Dynamic Sheets</span><small>Project & department sheets</small></div></a>
+</div>
+
+<div class="dashboard-grid-2 dashboard-analytics">
+    <section class="panel chart-panel">
+        <div class="panel-head">
+            <div><h3>Monthly Job Activity</h3><p>Jobs logged during the last 6 months</p></div>
+            <span class="panel-badge">Trend</span>
+        </div>
+        <div class="chart-box chart-box-lg"><canvas id="monthlyChart"></canvas></div>
+    </section>
+    <section class="panel chart-panel">
+        <div class="panel-head">
+            <div><h3>Jobs by Department</h3><p>Compare workload across departments</p></div>
+            <span class="panel-badge">Workload</span>
+        </div>
+        <div class="chart-box chart-box-lg"><canvas id="deptChart"></canvas></div>
+    </section>
+</div>
+
+<div class="dashboard-grid-2 mt-3 dashboard-analytics">
+    <section class="panel chart-panel">
+        <div class="panel-head">
+            <div><h3>Job Status Overview</h3><p>Current operational status distribution</p></div>
+            <span class="panel-badge">Status</span>
+        </div>
+        <div class="chart-box chart-box-lg"><canvas id="statusChart"></canvas></div>
+    </section>
+    <section class="panel chart-panel">
+        <div class="panel-head">
+            <div><h3>Department Cost Comparison</h3><p>Amounts remain separated by currency; no forced conversion</p></div>
+            <span class="panel-badge">Finance</span>
+        </div>
+        <div class="chart-box chart-box-lg"><canvas id="amountChart"></canvas></div>
+    </section>
+</div>
+
+<section class="panel mt-3">
+    <div class="panel-head">
+        <div><h3>Department Summary</h3><p>Jobs, quantities and currency-wise totals</p></div>
+        <a asp-controller="Reports" asp-action="Index">Open reports <i class="bi bi-arrow-right"></i></a>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead><tr><th>Department</th><th>Jobs</th><th>Total Qty</th>@foreach (var c in currencies) { <th>@c Amount</th> }</tr></thead>
+            <tbody>
+            @if (Model.DepartmentAmounts.Any())
+            {
+                @foreach (var r in Model.DepartmentAmounts)
+                {
+                    <tr><td><strong>@r.Department</strong></td><td>@r.JobCount</td><td>@r.Quantity.ToString("N3")</td>@foreach (var c in currencies) { <td>@(r.Amounts.TryGetValue(c, out var v) ? $"{c} {v:N2}" : "-")</td> }</tr>
+                }
+            }
+            else
+            {
+                <tr><td colspan="@(3 + currencies.Count)" class="empty-row">No department job amounts available yet.</td></tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="panel mt-3">
+    <div class="panel-head">
+        <div><h3>Recent Jobs</h3><p>Latest contractor activity in your permitted departments</p></div>
+        <a asp-controller="Jobs" asp-action="Index">View all <i class="bi bi-arrow-right"></i></a>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead><tr><th>Job No.</th><th>Project</th><th>Department</th><th>Contractor</th><th>Description</th><th>Status</th><th>Date</th><th></th></tr></thead>
+            <tbody>
+            @if (Model.RecentJobs.Any())
+            {
+                @foreach (var j in Model.RecentJobs)
+                {
+                    <tr><td><strong>@j.JobNumber</strong></td><td>@j.Project?.Name</td><td>@j.Department?.Name</td><td>@j.Contractor?.Name</td><td class="text-wrap-cell">@j.Description</td><td><span class="status @j.Status.ToString().ToLowerInvariant()">@j.Status</span></td><td>@j.JobDate.ToString("dd MMM yyyy")</td><td><a class="table-action" asp-controller="Jobs" asp-action="Details" asp-route-id="@j.Id" title="View job"><i class="bi bi-eye"></i></a></td></tr>
+                }
+            }
+            else
+            {
+                <tr><td colspan="8" class="empty-row">No jobs have been logged yet.</td></tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<div class="dashboard-grid-2 mt-3">
+    <section class="panel stock-overview-panel">
+        <div class="panel-head"><div><h3>Stock Inventory Health</h3><p>Live item availability across warehouses</p></div><a asp-controller="Inventory" asp-action="Index">View inventory</a></div>
+        <div class="stock-dashboard-layout">
+            <div>
+                <div class="mini-kpis stock-mini-kpis">
+                    <div><strong>@Model.TotalStockItems</strong><span>Total Items</span></div>
+                    <div class="success"><strong>@Model.HealthyStockItems</strong><span>Healthy</span></div>
+                    <div class="warning"><strong>@Model.LowStockItems</strong><span>Low Stock</span></div>
+                    <div class="danger"><strong>@Model.OutOfStockItems</strong><span>Out of Stock</span></div>
+                </div>
+                @if (Model.InventoryValueByCurrency.Any())
+                {
+                    <div class="inventory-values">
+                        @foreach (var v in Model.InventoryValueByCurrency)
+                        {
+                            <span><strong>@v.Key @v.Value.ToString("N2")</strong> stock value</span>
+                        }
+                    </div>
+                }
+            </div>
+            <div class="stock-chart-wrap"><canvas id="stockHealthChart"></canvas></div>
+        </div>
+        <div class="quick-row">
+            <a class="quick blue" asp-controller="Inventory" asp-action="Index"><i class="bi bi-box-seam"></i><span>Inventory</span></a>
+            <a class="quick green" asp-controller="Inventory" asp-action="Receive"><i class="bi bi-box-arrow-in-down"></i><span>Receive</span></a>
+            <a class="quick amber" asp-controller="Inventory" asp-action="Issue"><i class="bi bi-box-arrow-up"></i><span>Issue</span></a>
+            <a class="quick purple" asp-controller="Inventory" asp-action="Transfer"><i class="bi bi-arrow-left-right"></i><span>Transfer</span></a>
+        </div>
+    </section>
+
+    <section class="panel setup-panel">
+        <div class="panel-head"><div><h3>Quick Setup & Master Data</h3><p>Add new dropdown values without touching code</p></div></div>
+        <div class="setup-grid">
+            @if (canManageProjects)
+            {
+                <a class="setup-card" asp-controller="MasterData" asp-action="Index" asp-route-type="projects"><span class="setup-icon blue"><i class="bi bi-briefcase"></i></span><div><strong>Projects</strong><small>@Model.ProjectCount active</small></div><i class="bi bi-plus-circle setup-plus"></i></a>
+            }
+            @if (canManageDepartments)
+            {
+                <a class="setup-card" asp-controller="MasterData" asp-action="Index" asp-route-type="departments"><span class="setup-icon purple"><i class="bi bi-diagram-3"></i></span><div><strong>Departments</strong><small>@Model.DepartmentCount active</small></div><i class="bi bi-plus-circle setup-plus"></i></a>
+            }
+            @if (canManageContractors)
+            {
+                <a class="setup-card" asp-controller="MasterData" asp-action="Index" asp-route-type="contractors"><span class="setup-icon green"><i class="bi bi-person-gear"></i></span><div><strong>Contractors</strong><small>@Model.ContractorCount active</small></div><i class="bi bi-plus-circle setup-plus"></i></a>
+            }
+            @if (canManageMasterData)
+            {
+                <a class="setup-card" asp-controller="MasterData" asp-action="Index" asp-route-type="currencies"><span class="setup-icon amber"><i class="bi bi-cash-coin"></i></span><div><strong>Currencies</strong><small>@Model.CurrencyCount active</small></div><i class="bi bi-plus-circle setup-plus"></i></a>
+                <a class="setup-card" asp-controller="MasterData" asp-action="Index" asp-route-type="units"><span class="setup-icon slate"><i class="bi bi-rulers"></i></span><div><strong>Units</strong><small>Manage units</small></div><i class="bi bi-plus-circle setup-plus"></i></a>
+                <a class="setup-card" asp-controller="MasterData" asp-action="Index" asp-route-type="warehouses"><span class="setup-icon red"><i class="bi bi-building"></i></span><div><strong>Warehouses</strong><small>@Model.WarehouseCount active</small></div><i class="bi bi-plus-circle setup-plus"></i></a>
+            }
+            @if (canCreateStock)
+            {
+                <a class="setup-card" asp-controller="Inventory" asp-action="CreateItem"><span class="setup-icon cyan"><i class="bi bi-box2-heart"></i></span><div><strong>Stock Item</strong><small>Create inventory item</small></div><i class="bi bi-plus-circle setup-plus"></i></a>
+            }
+            @if (canManageUsers)
+            {
+                <a class="setup-card" asp-controller="Users" asp-action="Index"><span class="setup-icon indigo"><i class="bi bi-people"></i></span><div><strong>Users</strong><small>Manage access</small></div><i class="bi bi-arrow-right-circle setup-plus"></i></a>
+            }
+        </div>
+        @if (!canManageProjects && !canManageDepartments && !canManageContractors && !canManageMasterData && !canCreateStock && !canManageUsers)
+        {
+            <div class="permission-note"><i class="bi bi-shield-lock"></i><span>Quick setup options are shown only to users with the relevant management permission.</span></div>
+        }
+    </section>
+</div>
+
+@if (Model.RoleSummaries.Any())
+{
+    <section class="panel mt-3">
+        <div class="panel-head"><div><h3>User Permissions</h3><p>Role-based access configuration at a glance</p></div><a asp-controller="Permissions" asp-action="Index">Manage permissions <i class="bi bi-arrow-right"></i></a></div>
+        <div class="table-responsive"><table class="table table-hover"><thead><tr><th>Role</th><th>Access Rights</th><th>Configured Permissions</th><th>Users</th></tr></thead><tbody>@foreach (var r in Model.RoleSummaries) { <tr><td><strong>@r.RoleName</strong></td><td>@r.AccessSummary</td><td>@r.PermissionCount</td><td>@r.Users</td></tr> }</tbody></table></div>
+    </section>
+}
+
+@section Scripts {
+<script>
+(() => {
+    if (typeof Chart === 'undefined') return;
+
+    const palette = ['#2f80ed','#27ae60','#f2c94c','#eb5757','#9b51e0','#56ccf2','#2d9cdb','#6fcf97'];
+    const gridColor = 'rgba(31, 54, 88, 0.08)';
+    const textColor = '#637089';
+    Chart.defaults.font.family = "Inter, system-ui, -apple-system, 'Segoe UI', sans-serif";
+    Chart.defaults.color = textColor;
+
+    const monthlyLabels = @Html.Raw(JsonSerializer.Serialize(Model.MonthlyJobs.Keys));
+    const monthlyValues = @Html.Raw(JsonSerializer.Serialize(Model.MonthlyJobs.Values));
+    new Chart(document.getElementById('monthlyChart'), {
+        type: 'line',
+        data: { labels: monthlyLabels, datasets: [{ label: 'Jobs', data: monthlyValues, borderColor: '#2f80ed', backgroundColor: 'rgba(47,128,237,.10)', fill: true, tension: .38, borderWidth: 2.5, pointRadius: 4, pointHoverRadius: 6 }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { displayColors: false } }, scales: { x: { grid: { display: false } }, y: { beginAtZero: true, grid: { color: gridColor }, ticks: { precision: 0 } } } }
+    });
+
+    const deptLabels = @Html.Raw(JsonSerializer.Serialize(Model.DepartmentJobs.Keys));
+    const deptValues = @Html.Raw(JsonSerializer.Serialize(Model.DepartmentJobs.Values));
+    new Chart(document.getElementById('deptChart'), {
+        type: 'bar',
+        data: { labels: deptLabels, datasets: [{ label: 'Jobs', data: deptValues, backgroundColor: deptLabels.map((_, i) => palette[i % palette.length]), borderRadius: 7, maxBarThickness: 48 }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false } }, y: { beginAtZero: true, grid: { color: gridColor }, ticks: { precision: 0 } } } }
+    });
+
+    const stLabels = @Html.Raw(JsonSerializer.Serialize(Model.StatusJobs.Keys));
+    const stValues = @Html.Raw(JsonSerializer.Serialize(Model.StatusJobs.Values));
+    const statusColorMap = { Completed:'#27ae60', InProgress:'#f2c94c', OnHold:'#eb5757', Cancelled:'#95a5b5', Draft:'#2f80ed' };
+    new Chart(document.getElementById('statusChart'), {
+        type: 'doughnut',
+        data: { labels: stLabels, datasets: [{ data: stValues, backgroundColor: stLabels.map(x => statusColorMap[x] || '#95a5b5'), borderWidth: 3, borderColor: '#fff' }] },
+        options: { responsive: true, maintainAspectRatio: false, cutout: '67%', plugins: { legend: { position: 'right', labels: { usePointStyle: true, pointStyle: 'circle', boxWidth: 8, padding: 16 } } } }
+    });
+
+    const departmentAmounts = @Html.Raw(JsonSerializer.Serialize(Model.DepartmentAmounts));
+    const currencyCodes = @Html.Raw(JsonSerializer.Serialize(currencies));
+    const amountLabels = departmentAmounts.map(x => x.Department);
+    const amountDatasets = currencyCodes.map((currency, i) => ({
+        label: currency,
+        data: departmentAmounts.map(x => (x.Amounts && x.Amounts[currency]) ? x.Amounts[currency] : 0),
+        backgroundColor: palette[i % palette.length],
+        borderRadius: 6,
+        maxBarThickness: 38
+    }));
+    new Chart(document.getElementById('amountChart'), {
+        type: 'bar',
+        data: { labels: amountLabels, datasets: amountDatasets },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top', align: 'end', labels: { usePointStyle: true, pointStyle: 'rectRounded', boxWidth: 10 } }, tooltip: { callbacks: { label: ctx => `${ctx.dataset.label} ${Number(ctx.raw || 0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}` } } }, scales: { x: { grid: { display: false } }, y: { beginAtZero: true, grid: { color: gridColor } } } }
+    });
+
+    new Chart(document.getElementById('stockHealthChart'), {
+        type: 'doughnut',
+        data: { labels: ['Healthy','Low Stock','Out of Stock'], datasets: [{ data: [@Model.HealthyStockItems, @Model.LowStockItems, @Model.OutOfStockItems], backgroundColor: ['#27ae60','#f2c94c','#eb5757'], borderWidth: 3, borderColor: '#fff' }] },
+        options: { responsive: true, maintainAspectRatio: false, cutout: '70%', plugins: { legend: { display: false } } }
+    });
+})();
+</script>
+}

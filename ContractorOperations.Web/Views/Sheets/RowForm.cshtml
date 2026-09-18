@@ -1,0 +1,145 @@
+@model SheetRowFormVm
+@{
+    var editing = Model.Row != null;
+    ViewData["Title"] = editing ? $"Edit {Model.Row!.UniqueId}" : $"Add Row - {Model.Sheet.Name}";
+    var localAbroadCol = Model.Columns.FirstOrDefault(x => x.Name.Equals("Local/Abroad", StringComparison.OrdinalIgnoreCase));
+    var exportJobCol = Model.Columns.FirstOrDefault(x => x.Name.Equals("Export Job No", StringComparison.OrdinalIgnoreCase));
+    var importJobCol = Model.Columns.FirstOrDefault(x => x.Name.Equals("Import Job No", StringComparison.OrdinalIgnoreCase));
+}
+
+<div class="page-heading">
+    <div>
+        <a class="workspace-back" asp-action="Details" asp-route-id="@Model.Sheet.Id"><i class="bi bi-arrow-left"></i> @Model.Sheet.Name</a>
+        <h1>@(editing ? $"Edit {Model.Row!.UniqueId}" : "Add Row")</h1>
+        <p>@Model.Sheet.UniqueId · Values are stored inside this sheet only.</p>
+    </div>
+</div>
+
+<section class="panel sheet-row-form-panel">
+    <form asp-action="@(editing ? "EditRowPost" : "AddRowPost")" method="post" enctype="multipart/form-data">
+        @if (editing) { <input type="hidden" name="id" value="@Model.Row!.Id"/> } else { <input type="hidden" name="sheetId" value="@Model.Sheet.Id"/> }
+        <div asp-validation-summary="All" class="text-danger mb-3"></div>
+        <div class="dynamic-form-grid">
+        @foreach (var col in Model.Columns)
+        {
+            Model.Values.TryGetValue(col.Id, out var value);
+            var fieldName = $"col_{col.Id}";
+            var isAuto = !string.IsNullOrWhiteSpace(col.Options) && col.Options.StartsWith("__AUTO_", StringComparison.OrdinalIgnoreCase);
+            var isComputed = !string.IsNullOrWhiteSpace(col.Options) && col.Options.StartsWith("__COMPUTED_", StringComparison.OrdinalIgnoreCase);
+            var fieldId = $"sheet_col_{col.Id}";
+            <div class="dynamic-field @(col.ColumnType == SheetColumnType.Text && Model.Columns.Count < 8 ? "wide" : "")" data-column-name="@col.Name">
+                <label class="form-label">@col.Name @if(col.IsRequired){<span class="text-danger">*</span>} <small>@col.ColumnType</small></label>
+                @if (isAuto || isComputed)
+                {
+                    <input id="@fieldId" class="form-control system-managed-field" type="text" name="@fieldName" value="@value" readonly placeholder="@(isAuto ? "Auto-generated on save" : "Calculated automatically")" />
+                    <small class="text-muted">@(isAuto ? "System-generated unique value." : "Calculated automatically from linked sheet data.")</small>
+                }
+                else if (col.Options == "__DEPARTMENTS__")
+                {
+                    <select id="@fieldId" class="form-select" name="@fieldName">
+                        <option value="">-- Select department --</option>
+                        @foreach (var department in Model.Departments)
+                        {
+                            if (department.Code == value) { <option selected value="@department.Code">@department.Code - @department.Name</option> }
+                            else { <option value="@department.Code">@department.Code - @department.Name</option> }
+                        }
+                    </select>
+                }
+                else if (col.Options == "__CURRENCIES__")
+                {
+                    <select id="@fieldId" class="form-select" name="@fieldName">
+                        <option value="">-- Select currency --</option>
+                        @foreach (var currency in Model.Currencies)
+                        {
+                            if (currency.Code == value) { <option selected value="@currency.Code">@currency.Code - @currency.Name</option> }
+                            else { <option value="@currency.Code">@currency.Code - @currency.Name</option> }
+                        }
+                    </select>
+                }
+                else if (col.ColumnType == SheetColumnType.Project || col.Options == "__PROJECTS__")
+                {
+                    <select id="@fieldId" class="form-select" name="@fieldName">
+                        <option value="">-- Select project --</option>
+                        @foreach (var project in Model.Projects)
+                        {
+                            if (project.Code == value || project.Name == value) { <option selected value="@project.Code">@project.Code - @project.Name</option> }
+                            else { <option value="@project.Code">@project.Code - @project.Name</option> }
+                        }
+                    </select>
+                }
+                else if (col.ColumnType == SheetColumnType.Date)
+                {
+                    <input id="@fieldId" class="form-control" type="date" name="@fieldName" value="@value" />
+                }
+                else if (col.ColumnType == SheetColumnType.Time)
+                {
+                    <input id="@fieldId" class="form-control" type="time" name="@fieldName" value="@value" />
+                }
+                else if (col.ColumnType == SheetColumnType.Number || col.ColumnType == SheetColumnType.Currency || col.ColumnType == SheetColumnType.Percentage)
+                {
+                    <input id="@fieldId" class="form-control" type="number" step="any" name="@fieldName" value="@value" />
+                }
+                else if (col.ColumnType == SheetColumnType.Email)
+                {
+                    <input id="@fieldId" class="form-control" type="email" name="@fieldName" value="@value" />
+                }
+                else if (col.ColumnType == SheetColumnType.Phone)
+                {
+                    <input id="@fieldId" class="form-control" type="tel" name="@fieldName" value="@value" />
+                }
+                else if (col.ColumnType == SheetColumnType.Checkbox)
+                {
+                    var isChecked = string.Equals(value,"true",StringComparison.OrdinalIgnoreCase) || string.Equals(value,"on",StringComparison.OrdinalIgnoreCase);
+                    <div class="form-check dynamic-check">
+                    @if(isChecked){<input id="@fieldId" class="form-check-input" type="checkbox" name="@fieldName" value="true" checked/>}else{<input id="@fieldId" class="form-check-input" type="checkbox" name="@fieldName" value="true"/>}
+                    <label class="form-check-label" for="@fieldId">Yes / checked</label></div>
+                }
+                else if (col.ColumnType == SheetColumnType.Dropdown || col.ColumnType == SheetColumnType.Status)
+                {
+                    var rawOptions = string.IsNullOrWhiteSpace(col.Options) && col.ColumnType == SheetColumnType.Status ? "Pending,In Progress,Completed,On Hold,Cancelled" : col.Options ?? "";
+                    var options = rawOptions.Split(new[]{',','\n','|'}, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                    <select id="@fieldId" class="form-select" name="@fieldName"><option value="">-- Select --</option>@foreach(var option in options){if(option==value){<option selected value="@option">@option</option>}else{<option value="@option">@option</option>}}</select>
+                }
+                else if (col.ColumnType == SheetColumnType.File)
+                {
+                    @if(!string.IsNullOrWhiteSpace(value)){<div class="mb-2"><a href="@value" target="_blank"><i class="bi bi-paperclip"></i> Current file</a></div>}
+                    <input id="@fieldId" class="form-control" type="file" name="@fieldName" />
+                }
+                else
+                {
+                    <input id="@fieldId" class="form-control" type="text" name="@fieldName" value="@value" />
+                }
+            </div>
+        }
+        </div>
+        @if (!Model.Columns.Any())
+        {
+            <div class="alert alert-warning">This sheet is intentionally empty. Add the columns you need from the sheet page before creating rows.</div>
+        }
+        <div class="form-actions mt-4"><a class="btn btn-light border" asp-action="Details" asp-route-id="@Model.Sheet.Id">Cancel</a>@if(Model.Columns.Any()){<button class="btn btn-primary"><i class="bi bi-check2"></i> @(editing ? "Save Changes" : "Add Row")</button>}else{<button class="btn btn-primary" type="button" disabled><i class="bi bi-check2"></i> Add Row</button>}</div>
+    </form>
+</section>
+
+@if (localAbroadCol != null && exportJobCol != null && importJobCol != null)
+{
+<script>
+(function () {
+    const selector = document.getElementById('sheet_col_@localAbroadCol.Id');
+    const exportField = document.querySelector('[data-column-name="Export Job No"]');
+    const importField = document.querySelector('[data-column-name="Import Job No"]');
+    function updateVisibility() {
+        const local = selector && selector.value.toLowerCase() === 'local';
+        [exportField, importField].forEach(field => {
+            if (!field) return;
+            field.style.display = local ? 'none' : '';
+            if (local) {
+                const input = field.querySelector('input,select,textarea');
+                if (input) input.value = '';
+            }
+        });
+    }
+    if (selector) selector.addEventListener('change', updateVisibility);
+    updateVisibility();
+})();
+</script>
+}

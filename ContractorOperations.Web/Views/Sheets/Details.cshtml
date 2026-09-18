@@ -1,0 +1,129 @@
+@model SheetDetailsVm
+@inject IPermissionService PermissionService
+@{
+    ViewData["Title"] = Model.Sheet.Name;
+    var canManage = await PermissionService.HasPermissionAsync(User, "Sheets.Manage");
+    var backUrl = Model.Sheet.ProjectId.HasValue
+        ? Url.Action("Project", "Workspace", new { id = Model.Sheet.ProjectId.Value }) ?? "/Workspace"
+        : Url.Action("Index", "Sheets", new { departmentId = Model.Sheet.DepartmentId }) ?? "/Sheets";
+}
+
+<div class="sheet-toolbar-head">
+    <div>
+        <a class="workspace-back" href="@backUrl"><i class="bi bi-arrow-left"></i> Back</a>
+        <div class="sheet-title-line"><span class="sheet-id-lg">@Model.Sheet.UniqueId</span><h1>@Model.Sheet.Name</h1></div>
+        <p>@(Model.Sheet.Project != null ? $"Project: {Model.Sheet.Project.Name}" : Model.Sheet.Department != null ? $"Department: {Model.Sheet.Department.Name}" : "General sheet")</p>
+    </div>
+    <div class="page-actions">
+        @if (canManage)
+        {
+            <a class="btn btn-primary" asp-action="AddRow" asp-route-sheetId="@Model.Sheet.Id"><i class="bi bi-plus-lg"></i> Add Row</a>
+            <button class="btn btn-light border" data-bs-toggle="modal" data-bs-target="#addColumnModal"><i class="bi bi-layout-three-columns"></i> Add Column</button>
+        }
+    </div>
+</div>
+
+<section class="panel mb-3">
+    <div class="sheet-utility-row">
+        <form method="get" class="sheet-search"><input type="hidden" name="id" value="@Model.Sheet.Id"/><input class="form-control" name="q" value="@Model.Search" placeholder="Search any row value or unique ID..."/><button class="btn btn-outline-primary"><i class="bi bi-search"></i> Search</button>@if(!string.IsNullOrWhiteSpace(Model.Search)){<a class="btn btn-light border" asp-action="Details" asp-route-id="@Model.Sheet.Id">Clear</a>}</form>
+        <span class="text-muted small">@Model.Rows.Count row(s) · @Model.Columns.Count custom column(s)</span>
+    </div>
+</section>
+
+<section class="panel p-0 overflow-hidden">
+    <div class="dynamic-sheet-wrap">
+        <table class="table dynamic-sheet-table mb-0">
+            <thead><tr><th class="sticky-id">Unique ID</th>@foreach(var col in Model.Columns){<th>@col.Name <small>@col.ColumnType</small></th>}<th class="sheet-actions-col">Actions</th></tr></thead>
+            <tbody>
+            @if (!Model.Rows.Any())
+            {
+                <tr><td colspan="@(Model.Columns.Count + 2)" class="text-center py-5 text-muted">No rows yet. Use <strong>Add Row</strong> to create the first record.</td></tr>
+            }
+            @foreach (var row in Model.Rows)
+            {
+                <tr>
+                    <td class="sticky-id"><span class="row-id-chip">@row.UniqueId</span></td>
+                    @foreach (var col in Model.Columns)
+                    {
+                        var value = row.Cells.FirstOrDefault(x => x.SheetColumnId == col.Id)?.Value;
+                        <td>
+                            @if ((col.Name.Equals("Export Job No", StringComparison.OrdinalIgnoreCase) || col.Name.Equals("Import Job No", StringComparison.OrdinalIgnoreCase)) && Model.LinkedImportExportSheetId.HasValue && !string.IsNullOrWhiteSpace(value))
+                            {
+                                <a asp-action="Details" asp-route-id="@Model.LinkedImportExportSheetId.Value" asp-route-q="@value" class="sheet-job-link" title="Open shipment progress"><i class="bi bi-box-arrow-up-right"></i> @value</a>
+                            }
+                            else if (Model.Sheet.Name.Equals("Contract Summary", StringComparison.OrdinalIgnoreCase) && col.Name.Equals("End Date", StringComparison.OrdinalIgnoreCase) && DateTime.TryParse(value, out var endDate) && endDate.Date >= DateTime.Today && endDate.Date <= DateTime.Today.AddDays(30))
+                            {
+                                <span class="contract-expiry-warning" title="Contract ends within 30 days"><i class="bi bi-exclamation-triangle-fill"></i> @value</span>
+                            }
+                            else if (col.ColumnType == SheetColumnType.Checkbox)
+                            {
+                                <span class="badge @(string.Equals(value,"true",StringComparison.OrdinalIgnoreCase)||string.Equals(value,"on",StringComparison.OrdinalIgnoreCase)?"text-bg-success":"text-bg-secondary")">@(string.Equals(value,"true",StringComparison.OrdinalIgnoreCase)||string.Equals(value,"on",StringComparison.OrdinalIgnoreCase)?"Yes":"No")</span>
+                            }
+                            else if (col.ColumnType == SheetColumnType.File && !string.IsNullOrWhiteSpace(value))
+                            {
+                                <a href="@value" target="_blank" rel="noopener"><i class="bi bi-paperclip"></i> File</a>
+                            }
+                            else if (col.ColumnType == SheetColumnType.Status && !string.IsNullOrWhiteSpace(value))
+                            {
+                                <span class="status-pill">@value</span>
+                            }
+                            else { @value }
+                        </td>
+                    }
+                    <td class="sheet-actions-col">
+                        @if (canManage)
+                        {
+                            <a class="btn btn-sm btn-outline-primary" asp-action="EditRow" asp-route-id="@row.Id" title="Edit"><i class="bi bi-pencil"></i></a>
+                            <form asp-action="DeleteRow" method="post" class="d-inline" onsubmit="return confirm('Delete this row?');"><input type="hidden" name="id" value="@row.Id"/><button class="btn btn-sm btn-outline-danger" title="Delete"><i class="bi bi-trash"></i></button></form>
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+@if (canManage)
+{
+<section class="panel mt-3">
+    <div class="panel-head"><div><h3>Column Management</h3><p>Rename, reorder or remove custom columns. Row Unique ID is system-managed.</p></div></div>
+    <div class="column-manager-list">
+    @foreach (var col in Model.Columns)
+    {
+        <div class="column-manager-row">
+            <form asp-action="RenameColumn" method="post" class="column-rename-form"><input type="hidden" name="id" value="@col.Id"/><span class="column-type-badge">@col.ColumnType</span><input class="form-control form-control-sm" name="name" value="@col.Name"/><button class="btn btn-sm btn-outline-primary">Save</button></form>
+            <div class="column-actions">
+                <form asp-action="MoveColumn" method="post"><input type="hidden" name="id" value="@col.Id"/><input type="hidden" name="direction" value="-1"/><button class="btn btn-sm btn-light border" title="Move left"><i class="bi bi-arrow-left"></i></button></form>
+                <form asp-action="MoveColumn" method="post"><input type="hidden" name="id" value="@col.Id"/><input type="hidden" name="direction" value="1"/><button class="btn btn-sm btn-light border" title="Move right"><i class="bi bi-arrow-right"></i></button></form>
+                <form asp-action="DeleteColumn" method="post" onsubmit="return confirm('Delete this column and all of its cell values?');"><input type="hidden" name="id" value="@col.Id"/><button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button></form>
+            </div>
+        </div>
+    }
+    </div>
+</section>
+
+<section class="panel mt-3">
+    <div class="panel-head"><div><h3>Sheet Settings</h3><p>Rename or remove this sheet from active view.</p></div></div>
+    <div class="sheet-settings-row">
+        <form asp-action="Rename" method="post" class="d-flex gap-2 flex-grow-1"><input type="hidden" name="id" value="@Model.Sheet.Id"/><input class="form-control" name="name" value="@Model.Sheet.Name" required/><button class="btn btn-outline-primary">Rename</button></form>
+        <form asp-action="Delete" method="post" onsubmit="return confirm('Remove this sheet from active view?');"><input type="hidden" name="id" value="@Model.Sheet.Id"/><button class="btn btn-outline-danger"><i class="bi bi-trash"></i> Remove Sheet</button></form>
+    </div>
+</section>
+
+<div class="modal fade" id="addColumnModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0 shadow">
+        <div class="modal-header"><h5 class="modal-title">Add Column</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+        <form asp-action="AddColumn" method="post">
+            <input type="hidden" name="sheetId" value="@Model.Sheet.Id"/>
+            <div class="modal-body">
+                <div class="mb-3"><label class="form-label">Column Name</label><input class="form-control" name="name" required/></div>
+                <div class="mb-3"><label class="form-label">Column Type</label><select class="form-select" name="columnType">@foreach(var type in Enum.GetValues<SheetColumnType>()){<option value="@type">@type</option>}</select></div>
+                <div class="mb-3"><label class="form-label">Dropdown Options (optional)</label><textarea class="form-control" name="options" rows="2" placeholder="Option 1, Option 2, Option 3"></textarea><small class="text-muted">Used for Dropdown/Status columns. Separate values with commas.</small></div>
+                <label class="form-check"><input class="form-check-input" type="checkbox" name="isRequired" value="true"/><span class="form-check-label">Required field</span></label>
+            </div>
+            <div class="modal-footer"><button class="btn btn-light border" type="button" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary">Add Column</button></div>
+        </form>
+    </div></div>
+</div>
+}

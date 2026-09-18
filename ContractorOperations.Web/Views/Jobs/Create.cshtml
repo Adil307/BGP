@@ -1,0 +1,4 @@
+@model JobFormVm
+@{ ViewData["Title"]="Add Job"; }
+<div class="page-heading"><div><h1>Add New Job</h1><p>Create a contractor job with controlled master data and line items.</p></div><a class="btn btn-outline-secondary" asp-action="Index">Back</a></div>
+<form method="post"><section class="panel form-panel"><partial name="_JobForm" model="Model"/><div class="form-actions"><a class="btn btn-light" asp-action="Index">Cancel</a><button class="btn btn-primary btn-lg"><i class="bi bi-check2"></i> Create Job</button></div></section></form>

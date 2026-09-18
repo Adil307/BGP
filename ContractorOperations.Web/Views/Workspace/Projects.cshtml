@@ -1,0 +1,65 @@
+@model CountryProjectsVm
+@inject IPermissionService PermissionService
+@{
+    ViewData["Title"] = $"{Model.Country.Name} Projects";
+    var canManage = await PermissionService.HasPermissionAsync(User, "Projects.Manage");
+}
+
+<div class="workspace-hero">
+    <div>
+        <a class="workspace-back" asp-action="Index"><i class="bi bi-arrow-left"></i> Countries</a>
+        <div class="eyebrow"><i class="bi bi-geo-alt"></i> @Model.Country.Name</div>
+        <h1>Select Project</h1>
+        <p>Open a project dashboard to work with jobs, inventory requests and its sheets.</p>
+    </div>
+    @if (canManage)
+    {
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addProjectModal"><i class="bi bi-plus-lg"></i> Add More</button>
+    }
+</div>
+
+<div class="workspace-grid project-select-grid">
+@foreach (var workspace in Model.Workspaces)
+{
+    <a class="workspace-card project-card" asp-action="Project" asp-route-id="@workspace.ProjectId">
+        <div class="workspace-card-icon project"><i class="bi bi-buildings"></i></div>
+        <div class="workspace-card-copy">
+            <span class="workspace-code">@workspace.UniqueId</span>
+            <h3>@workspace.Project?.Name</h3>
+            <p>@workspace.Status · @workspace.ProgressPercent% complete</p>
+        </div>
+        <i class="bi bi-arrow-right workspace-arrow"></i>
+    </a>
+}
+</div>
+
+@if (!Model.Workspaces.Any())
+{
+    <section class="panel empty-state"><i class="bi bi-briefcase"></i><h3>No projects in @Model.Country.Name</h3><p>Use Add More to create the first project.</p></section>
+}
+
+@if (canManage)
+{
+<div class="modal fade" id="addProjectModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header"><div><h5 class="modal-title">Add Project</h5><small class="text-muted">A unique Project ID and 12 starter sheets will be created automatically.</small></div><button class="btn-close" data-bs-dismiss="modal"></button></div>
+            <form asp-action="AddProject" method="post">
+                <input type="hidden" name="countryId" value="@Model.Country.Id" />
+                <div class="modal-body">
+                    <div class="form-grid-2">
+                        <div><label class="form-label">Project Name</label><input class="form-control" name="name" placeholder="Project name" required /></div>
+                        <div><label class="form-label">Project Manager</label><input class="form-control" name="projectManager" placeholder="Manager / lead" /></div>
+                        <div><label class="form-label">Start Date</label><input class="form-control" type="date" name="startDate" /></div>
+                        <div><label class="form-label">Deadline</label><input class="form-control" type="date" name="deadline" /></div>
+                        <div><label class="form-label">Budget</label><input class="form-control" type="number" step="0.01" min="0" name="budget" /></div>
+                        <div><label class="form-label">Priority</label><select class="form-select" name="priority"><option>Low</option><option selected>Medium</option><option>High</option><option>Urgent</option></select></div>
+                    </div>
+                    <div class="mt-3"><label class="form-label">Description</label><textarea class="form-control" name="description" rows="3" placeholder="Project scope or notes"></textarea></div>
+                </div>
+                <div class="modal-footer"><button type="button" class="btn btn-light border" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary"><i class="bi bi-plus-lg"></i> Create Project</button></div>
+            </form>
+        </div>
+    </div>
+</div>
+}

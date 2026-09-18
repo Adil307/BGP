@@ -1,0 +1,56 @@
+@model CountrySelectionVm
+@inject IPermissionService PermissionService
+@{
+    ViewData["Title"] = "Countries";
+    var canManage = await PermissionService.HasPermissionAsync(User, "Projects.Manage");
+}
+
+<div class="workspace-hero">
+    <div>
+        <div class="eyebrow"><i class="bi bi-stars"></i> BGP Management System</div>
+        <h1>Select Country</h1>
+        <p>Choose a country to open its projects, jobs, inventory and project sheets.</p>
+    </div>
+    @if (canManage)
+    {
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addCountryModal"><i class="bi bi-plus-lg"></i> Add More</button>
+    }
+</div>
+
+<div class="workspace-grid">
+@foreach (var country in Model.Countries)
+{
+    <a class="workspace-card" asp-action="Projects" asp-route-id="@country.Id">
+        <div class="workspace-card-icon"><i class="bi bi-geo-alt-fill"></i></div>
+        <div class="workspace-card-copy">
+            <span class="workspace-code">@country.Code</span>
+            <h3>@country.Name</h3>
+            <p>@(Model.ProjectCounts.TryGetValue(country.Id, out var count) ? count : 0) project(s)</p>
+        </div>
+        <i class="bi bi-arrow-right workspace-arrow"></i>
+    </a>
+}
+</div>
+
+@if (!Model.Countries.Any())
+{
+    <section class="panel empty-state"><i class="bi bi-globe2"></i><h3>No countries yet</h3><p>Add the first country to start organizing projects.</p></section>
+}
+
+@if (canManage)
+{
+<div class="modal fade" id="addCountryModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header"><h5 class="modal-title">Add Country</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+            <form asp-action="AddCountry" method="post">
+                <div class="modal-body">
+                    <div class="mb-3"><label class="form-label">Country Name</label><input class="form-control" name="name" placeholder="e.g. Saudi Arabia" required /></div>
+                    <div><label class="form-label">Country Code</label><input class="form-control" name="code" maxlength="10" placeholder="e.g. SA" required /></div>
+                </div>
+                <div class="modal-footer"><button type="button" class="btn btn-light border" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary"><i class="bi bi-plus-lg"></i> Add Country</button></div>
+            </form>
+        </div>
+    </div>
+</div>
+}

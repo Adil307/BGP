@@ -1,0 +1,4 @@
+@model JobFormVm
+@{ ViewData["Title"]="Edit Job"; }
+<div class="page-heading"><div><h1>Edit @Model.JobNumber</h1><p>Update the approved job record and line items.</p></div><a class="btn btn-outline-secondary" asp-action="Details" asp-route-id="@Model.Id">Back</a></div>
+<form method="post"><input type="hidden" asp-for="Id"/><section class="panel form-panel"><partial name="_JobForm" model="Model"/><div class="form-actions"><a class="btn btn-light" asp-action="Details" asp-route-id="@Model.Id">Cancel</a><button class="btn btn-primary btn-lg"><i class="bi bi-check2"></i> Save Changes</button></div></section></form>

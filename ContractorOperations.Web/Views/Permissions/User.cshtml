@@ -1,0 +1,6 @@
+@model UserPermissionVm
+@{ ViewData["Title"]="User Permission Overrides"; }
+<div class="page-heading"><div><h1>@Model.UserName</h1><p>User-specific override: Inherit from role, explicitly Allow, or explicitly Deny.</p></div><a class="btn btn-outline-secondary" asp-controller="Users" asp-action="Index">Back to Users</a></div>
+<form asp-action="SaveUser" method="post"><input type="hidden" name="userId" value="@Model.UserId"/><section class="panel">
+@foreach(var group in Model.Permissions.GroupBy(x=>x.Group)){<div class="permission-group"><h4>@group.Key</h4><div class="user-permission-list">@foreach(var p in group){var decision=Model.Decisions.TryGetValue(p.Id,out var d)?d:"inherit";<div class="user-permission-row"><div><strong>@p.Name</strong><small>@p.Key</small></div><select class="form-select" name="permission_@p.Id"><option value="inherit" selected="@(decision=="inherit")">Inherit role</option><option value="allow" selected="@(decision=="allow")">Allow</option><option value="deny" selected="@(decision=="deny")">Deny</option></select></div>}</div></div>}
+<div class="form-actions"><a class="btn btn-light" asp-controller="Users" asp-action="Index">Cancel</a><button class="btn btn-primary">Save User Overrides</button></div></section></form>
