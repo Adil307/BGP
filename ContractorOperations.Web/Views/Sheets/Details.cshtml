@@ -18,7 +18,7 @@
     var elevatedApprover = User.IsInRole("Administrator") || User.IsInRole("Super Admin");
     var approvalStatusColumn = Model.Columns.FirstOrDefault(x => x.Name.Equals("Approval Status", StringComparison.OrdinalIgnoreCase));
     var approverColumn = Model.Columns.FirstOrDefault(x => x.Name.Equals("Approver / Manager", StringComparison.OrdinalIgnoreCase));
-    var addLabel = isServiceBusiness ? "Add Job" : isServiceApproval ? "Submit for Approval" : "Add Job";
+    var addLabel = isServiceBusiness ? "Add Job" : isServiceApproval ? "Submit for Approval" : "Add Row";
     var workflowOrder = new[] { "Requisition", "Service Approval", "Service Business", "Purchase Order", "Service Logistics", "Invoice Reception" };
 }
 
@@ -158,5 +158,8 @@
 </section>
 }
 </div>
+<<<<<<< HEAD
 
 
+=======
+>>>>>>> parent of 41955f5 (Rename Add Row to Add Job)

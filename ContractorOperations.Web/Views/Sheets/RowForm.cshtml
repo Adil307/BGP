@@ -9,7 +9,7 @@
         : Model.Sheet.Name == "Service Logistics" ? "Logistics & Return"
         : Model.Sheet.Name == "Invoice Reception" ? "Invoice & Payment"
         : Model.Sheet.Name;
-    var addLabel = isServiceBusiness ? "Add Job" : isServiceApproval ? "Submit for Approval" : "Add Row";
+    var addLabel = isServiceBusiness ? "Add Job" : isServiceApproval ? "Submit for Approval" : "Add Job";
     ViewData["Title"] = editing ? $"Edit {Model.Row!.UniqueId}" : $"{addLabel} - {displaySheetName}";
     var localAbroadCol = Model.Columns.FirstOrDefault(x => x.Name.Equals("Local/Abroad", StringComparison.OrdinalIgnoreCase));
     var logisticsModeCol = Model.Sheet.Name.Equals("Service Logistics", StringComparison.OrdinalIgnoreCase) ? Model.Columns.FirstOrDefault(x => x.Name.Equals("Mode", StringComparison.OrdinalIgnoreCase)) : null;
@@ -215,3 +215,4 @@
 })();
 </script>
 }
+
