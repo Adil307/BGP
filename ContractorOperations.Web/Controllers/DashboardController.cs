@@ -56,12 +56,58 @@ public class DashboardController : Controller
             CurrencyCount = await _db.Currencies.CountAsync(x => x.IsActive),
             TotalStockItems = await _db.StockItems.CountAsync(x => x.IsActive),
             WarehouseCount = await _db.Warehouses.CountAsync(x => x.IsActive),
-            SheetCount = await _db.ProjectSheets.CountAsync(x => x.IsActive)
+            SheetCount = await _db.ProjectSheets.CountAsync(x => x.IsActive),
+            TotalSheetRows = await _db.SheetRows.CountAsync(),
+            ActiveUserCount = await _db.Users.CountAsync(x => x.IsActive),
+            InactiveUserCount = await _db.Users.CountAsync(x => !x.IsActive),
+            ActiveCountryCount = await _db.Countries.CountAsync(x => x.IsActive)
         };
+
+        vm.OpenWorkCount = await jobs.CountAsync(x => x.Status == JobStatus.Draft || x.Status == JobStatus.InProgress || x.Status == JobStatus.OnHold);
+        var completionBase = vm.CompletedJobs + vm.OpenWorkCount;
+        vm.WorkCompletionPercent = completionBase == 0 ? 0 : (int)Math.Round(vm.CompletedJobs * 100d / completionBase);
 
         vm.ActiveProjectCount = await _db.ProjectWorkspaces.CountAsync(x => x.Status == "Active");
         vm.CompletedProjectCount = await _db.ProjectWorkspaces.CountAsync(x => x.Status == "Completed");
         vm.PendingProjectCount = await _db.ProjectWorkspaces.CountAsync(x => x.Status == "Pending" || x.Status == "On Hold");
+        var projectProgress = await _db.ProjectWorkspaces.AsNoTracking().Where(x => x.Project!.IsActive).Select(x => x.ProgressPercent).ToListAsync();
+        vm.AverageProjectProgress = projectProgress.Count == 0 ? 0 : (int)Math.Round(projectProgress.Average());
+        var projectStatuses = await _db.ProjectWorkspaces.AsNoTracking().Where(x => x.Project!.IsActive)
+            .GroupBy(x => x.Status).Select(g => new { Status = g.Key, Count = g.Count() }).ToListAsync();
+        vm.ProjectStatusCounts = projectStatuses.ToDictionary(x => string.IsNullOrWhiteSpace(x.Status) ? "Unknown" : x.Status, x => x.Count);
+
+        var roleCounts = await (from userRole in _db.UserRoles.AsNoTracking()
+                                join role in _db.Roles.AsNoTracking() on userRole.RoleId equals role.Id
+                                join user in _db.Users.AsNoTracking() on userRole.UserId equals user.Id
+                                where user.IsActive
+                                group userRole by role.Name into g
+                                select new { Role = g.Key ?? "Role", Count = g.Count() })
+            .OrderByDescending(x => x.Count).ThenBy(x => x.Role).ToListAsync();
+        vm.RoleUserCounts = roleCounts.ToDictionary(x => x.Role, x => x.Count);
+
+        var requisitionCount = await CountSheetRowsAsync("Requisition");
+        var approvalCount = await CountSheetRowsAsync("Service Approval");
+        var serviceJobCount = await CountSheetRowsAsync("Service Business");
+        var poCount = await CountSheetRowsAsync("Purchase Order");
+        var logisticsCount = await CountSheetRowsAsync("Service Logistics");
+        var invoiceCount = await CountSheetRowsAsync("Invoice Reception");
+        vm.WorkflowStageCounts = new Dictionary<string, int>
+        {
+            ["Requisitions"] = requisitionCount,
+            ["Service Approvals"] = approvalCount,
+            ["Jobs Created"] = serviceJobCount,
+            ["Purchase Orders"] = poCount,
+            ["Delivery / Return"] = logisticsCount,
+            ["Invoices"] = invoiceCount
+        };
+
+        var approvalStatuses = await CountSheetStatusAsync("Service Approval", "Approval Status");
+        vm.PendingServiceApprovals = approvalStatuses.GetValueOrDefault("Pending");
+        vm.ApprovedServiceApprovals = approvalStatuses.GetValueOrDefault("Approved");
+        vm.RejectedServiceApprovals = approvalStatuses.GetValueOrDefault("Rejected");
+        var invoiceStatuses = await CountSheetStatusAsync("Invoice Reception", "Payment Status");
+        vm.PaidInvoices = invoiceStatuses.GetValueOrDefault("Paid");
+        vm.PendingInvoices = Math.Max(0, invoiceCount - vm.PaidInvoices);
 
         var inventoryRequests = _db.InventoryRequests.AsNoTracking().AsQueryable();
         if (allowed != null) inventoryRequests = inventoryRequests.Where(x => allowed.Contains(x.DepartmentId));
@@ -172,5 +218,36 @@ public class DashboardController : Controller
         }
 
         return View(vm);
+    }
+
+    private async Task<int> CountSheetRowsAsync(string sheetName)
+    {
+        var sheetIds = await _db.ProjectSheets.AsNoTracking()
+            .Where(x => x.IsActive && x.Name == sheetName)
+            .Select(x => x.Id).ToListAsync();
+        return sheetIds.Count == 0 ? 0 : await _db.SheetRows.AsNoTracking().CountAsync(x => sheetIds.Contains(x.ProjectSheetId));
+    }
+
+    private async Task<Dictionary<string, int>> CountSheetStatusAsync(string sheetName, string columnName)
+    {
+        var sheetIds = await _db.ProjectSheets.AsNoTracking()
+            .Where(x => x.IsActive && x.Name == sheetName)
+            .Select(x => x.Id).ToListAsync();
+        if (sheetIds.Count == 0) return new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        var columnIds = await _db.SheetColumns.AsNoTracking()
+            .Where(x => sheetIds.Contains(x.ProjectSheetId) && x.Name == columnName)
+            .Select(x => x.Id).ToListAsync();
+        if (columnIds.Count == 0) return new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        var values = await _db.SheetCells.AsNoTracking()
+            .Where(x => columnIds.Contains(x.SheetColumnId) && x.Value != null && x.Value != "")
+            .Select(x => x.Value!)
+            .ToListAsync();
+        return values
+            .Select(x => x.Trim())
+            .Where(x => x.Length > 0)
+            .GroupBy(x => x, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
     }
 }

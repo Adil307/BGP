@@ -116,6 +116,19 @@ public class SheetCell
     public string? Value { get; set; }
 }
 
+
+public class WorkflowNotification
+{
+    public long Id { get; set; }
+    [Required, MaxLength(450)] public string UserId { get; set; } = string.Empty;
+    public ApplicationUser? User { get; set; }
+    [Required, MaxLength(160)] public string Title { get; set; } = string.Empty;
+    [Required, MaxLength(1000)] public string Message { get; set; } = string.Empty;
+    [MaxLength(500)] public string? Url { get; set; }
+    public bool IsRead { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
 public class InventoryRequest
 {
     public long Id { get; set; }

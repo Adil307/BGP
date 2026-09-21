@@ -1,15 +1,27 @@
 @model SheetIndexVm
 @inject IPermissionService PermissionService
 @{
-    ViewData["Title"] = "Sheets";
+    ViewData["Title"] = "Service Operations";
     var canManage = await PermissionService.HasPermissionAsync(User, "Sheets.Manage");
     var selectedProject = Context.Request.Query["projectId"].ToString();
     var selectedDepartment = Context.Request.Query["departmentId"].ToString();
+    var workflowNames = new[] { "Requisition", "Service Approval", "Service Business", "Purchase Order", "Service Logistics", "Invoice Reception" };
+    var workflowSheets = Model.Sheets.Where(x => workflowNames.Contains(x.Name, StringComparer.OrdinalIgnoreCase)).OrderBy(x => x.Project?.Name).ThenBy(x => Array.FindIndex(workflowNames, n => n.Equals(x.Name, StringComparison.OrdinalIgnoreCase))).ToList();
+    var otherSheets = Model.Sheets.Where(x => !workflowNames.Contains(x.Name, StringComparer.OrdinalIgnoreCase)).ToList();
+    var workflowDescriptions = new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Requisition"] = "Create the service requisition with scope, quantity and required date.",
+        ["Service Approval"] = "Assigned PM/manager reviews the requisition and records the formal decision.",
+        ["Service Business"] = "Create the approved job and initiate vendor quotation follow-up.",
+        ["Purchase Order"] = "Create and issue the PO to the vendor.",
+        ["Service Logistics"] = "Track local delivery or international export/import through equipment return.",
+        ["Invoice Reception"] = "Receive invoice and follow payment until closure."
+    };
 }
 
 <div class="page-heading">
-    <div><h1>Sheets</h1><p>Project and department sheets with dynamic rows, columns and auto-generated IDs.</p></div>
-    @if (canManage) { <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addSheetModal"><i class="bi bi-plus-lg"></i> Add Sheet</button> }
+    <div><h1>Service Operations</h1><p>Manage service requisitions, approvals, jobs, purchase orders, logistics, and invoice closure from one controlled workspace.</p></div>
+    @if (canManage) { <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addSheetModal"><i class="bi bi-plus-lg"></i> New Sheet</button> }
 </div>
 
 <section class="panel mb-3">
@@ -20,17 +32,37 @@
     </form>
 </section>
 
-<div class="sheet-card-grid">
-@foreach (var sheet in Model.Sheets)
-{
-    <a class="sheet-card" asp-action="Details" asp-route-id="@sheet.Id">
-        <div class="sheet-card-top"><span class="sheet-icon"><i class="bi bi-table"></i></span><span class="sheet-id">@sheet.UniqueId</span></div>
-        <h4>@sheet.Name</h4>
-        <p>@(sheet.Project != null ? $"Project: {sheet.Project.Name}" : sheet.Department != null ? $"Department: {sheet.Department.Name}" : "General sheet")</p>
-        <span class="sheet-open">Open Sheet <i class="bi bi-arrow-right"></i></span>
-    </a>
-}
-</div>
+<section class="panel mb-3">
+    <div class="panel-head"><div><h3>Service Procurement &amp; Job Lifecycle</h3><p>Track each request through approval, job creation, procurement, logistics, and financial closure.</p></div></div>
+    <div class="workflow-step-grid workflow-step-grid-wide">
+    @for (var i = 0; i < workflowSheets.Count; i++)
+    {
+        var sheet = workflowSheets[i];
+        var label = sheet.Name == "Requisition" ? "Service Requisition" : sheet.Name == "Service Approval" ? "Manager Approval" : sheet.Name == "Service Business" ? "Job Creation" : sheet.Name == "Service Logistics" ? "Logistics & Return" : sheet.Name == "Invoice Reception" ? "Invoice & Payment" : sheet.Name;
+        <a class="workflow-step-card" asp-action="Details" asp-route-id="@sheet.Id">
+            <span class="workflow-step-no">@(Array.FindIndex(workflowNames, x => x.Equals(sheet.Name, StringComparison.OrdinalIgnoreCase)) + 1)</span>
+            <div><strong>@label</strong><small>@workflowDescriptions.GetValueOrDefault(sheet.Name)</small><em>@(sheet.Project != null ? sheet.Project.Name : sheet.Department?.Name ?? "General")</em></div>
+            <i class="bi bi-arrow-right"></i>
+        </a>
+    }
+    </div>
+</section>
+
+<section class="panel">
+    <div class="panel-head"><div><h3>Other Sheets</h3><p>Supporting operational records that are not part of the core service lifecycle.</p></div></div>
+    <div class="sheet-card-grid">
+    @foreach (var sheet in otherSheets)
+    {
+        <a class="sheet-card" asp-action="Details" asp-route-id="@sheet.Id">
+            <div class="sheet-card-top"><span class="sheet-icon"><i class="bi bi-table"></i></span><span class="sheet-id">@sheet.UniqueId</span></div>
+            <h4>@sheet.Name</h4>
+            <p>@(sheet.Project != null ? $"Project: {sheet.Project.Name}" : sheet.Department != null ? $"Department: {sheet.Department.Name}" : "General sheet")</p>
+            <span class="sheet-open">Open Sheet <i class="bi bi-arrow-right"></i></span>
+        </a>
+    }
+    @if (!otherSheets.Any()) { <div class="text-muted py-3">No other sheets found.</div> }
+    </div>
+</section>
 
 @if (!Model.Sheets.Any())
 {
@@ -41,7 +73,7 @@
 {
 <div class="modal fade" id="addSheetModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0 shadow">
-        <div class="modal-header"><h5 class="modal-title">Add Sheet</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-header"><h5 class="modal-title">Create Operational Sheet</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
         <form asp-action="Create" method="post">
             <div class="modal-body">
                 <div class="mb-3"><label class="form-label">Sheet Name</label><input class="form-control" name="name" placeholder="e.g. Expense Sheet" required /></div>

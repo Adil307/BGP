@@ -20,15 +20,35 @@
 <div class="workspace-grid">
 @foreach (var country in Model.Countries)
 {
-    <a class="workspace-card" asp-action="Projects" asp-route-id="@country.Id">
-        <div class="workspace-card-icon"><i class="bi bi-geo-alt-fill"></i></div>
-        <div class="workspace-card-copy">
-            <span class="workspace-code">@country.Code</span>
-            <h3>@country.Name</h3>
-            <p>@(Model.ProjectCounts.TryGetValue(country.Id, out var count) ? count : 0) project(s)</p>
-        </div>
-        <i class="bi bi-arrow-right workspace-arrow"></i>
-    </a>
+    var projectCount = Model.ProjectCounts.TryGetValue(country.Id, out var count) ? count : 0;
+    <div class="country-card-wrap">
+        <a class="workspace-card" asp-action="Projects" asp-route-id="@country.Id">
+            <div class="workspace-card-icon"><i class="bi bi-geo-alt-fill"></i></div>
+            <div class="workspace-card-copy">
+                <span class="workspace-code">@country.Code</span>
+                <h3>@country.Name</h3>
+                <p>@projectCount active project(s)</p>
+            </div>
+            <i class="bi bi-arrow-right workspace-arrow"></i>
+        </a>
+        @if (canManage)
+        {
+            <div class="country-card-actions">
+                <a asp-action="Projects" asp-route-id="@country.Id" class="country-action-link"><i class="bi bi-folder2-open"></i> Open projects</a>
+                @if (projectCount == 0)
+                {
+                    <form asp-action="DeleteCountry" method="post" onsubmit="return confirm('Remove @country.Name from active countries?');">
+                        <input type="hidden" name="id" value="@country.Id" />
+                        <button class="country-delete-link" type="submit"><i class="bi bi-trash3"></i> Delete country</button>
+                    </form>
+                }
+                else
+                {
+                    <span class="country-delete-disabled" title="Country cannot be deleted while it has active projects"><i class="bi bi-lock"></i> Delete unavailable</span>
+                }
+            </div>
+        }
+    </div>
 }
 </div>
 

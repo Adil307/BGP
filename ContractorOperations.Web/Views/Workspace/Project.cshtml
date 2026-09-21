@@ -4,8 +4,19 @@
     ViewData["Title"] = Model.Project.Name;
     var canManageProject = await PermissionService.HasPermissionAsync(User, "Projects.Manage");
     var canManageSheets = await PermissionService.HasPermissionAsync(User, "Sheets.Manage");
-    var canCreateJob = await PermissionService.HasPermissionAsync(User, "Jobs.Create");
     var canRequestInventory = await PermissionService.HasPermissionAsync(User, "Inventory.Requests");
+    var workflowNames = new[] { "Requisition", "Service Approval", "Service Business", "Purchase Order", "Service Logistics", "Invoice Reception" };
+    var workflowSheets = Model.Sheets.Where(x => workflowNames.Contains(x.Name, StringComparer.OrdinalIgnoreCase)).OrderBy(x => Array.FindIndex(workflowNames, n => n.Equals(x.Name, StringComparison.OrdinalIgnoreCase))).ToList();
+    var otherSheets = Model.Sheets.Where(x => !workflowNames.Contains(x.Name, StringComparer.OrdinalIgnoreCase)).ToList();
+    var workflowDescriptions = new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Requisition"] = "Create the service requisition with scope, quantity and required date.",
+        ["Service Approval"] = "Assigned PM/manager reviews the requisition and records the formal decision.",
+        ["Service Business"] = "Create the approved job and initiate vendor quotation follow-up.",
+        ["Purchase Order"] = "Issue PO to the selected vendor/subcontractor.",
+        ["Service Logistics"] = "Track delivery/export, service and received-back/import.",
+        ["Invoice Reception"] = "Receive invoice and follow payment through closure."
+    };
 }
 
 <div class="project-hero">
@@ -20,9 +31,12 @@
             <span><i class="bi bi-flag"></i> @Model.Workspace.Priority priority</span>
             <span><i class="bi bi-activity"></i> @Model.Workspace.Status</span>
         </div>
+        <div class="project-progress-wrap">
+            <div class="project-progress-label"><span>Overall project progress</span><strong>@Model.Workspace.ProgressPercent%</strong></div>
+            <div class="project-progress-track"><span style="width:@Model.Workspace.ProgressPercent%"></span></div>
+        </div>
     </div>
     <div class="page-actions project-actions">
-        @if (canCreateJob) { <a class="btn btn-light border" asp-controller="Jobs" asp-action="Create" asp-route-projectId="@Model.Project.Id"><i class="bi bi-plus-circle"></i> Add Job</a> }
         @if (canRequestInventory) { <a class="btn btn-light border" asp-controller="InventoryRequests" asp-action="Create" asp-route-projectId="@Model.Project.Id"><i class="bi bi-box-arrow-in-down"></i> Inventory Request</a> }
         @if (canManageProject) { <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#editProjectModal"><i class="bi bi-pencil"></i> Edit Project</button> }
     </div>
@@ -37,25 +51,41 @@
 
 <section class="panel mt-3">
     <div class="panel-head sheet-section-head">
-        <div><h3>Project Sheets</h3><p>12 starter sheets are created automatically. Add more whenever the project needs them.</p></div>
+        <div><h3>Service Procurement &amp; Job Lifecycle</h3><p>Requisition → Manager Approval → Job Creation → Purchase Order → Logistics &amp; Return → Invoice &amp; Payment.</p></div>
         @if (canManageSheets)
         {
             <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addSheetModal"><i class="bi bi-plus-lg"></i> Add Sheet</button>
         }
     </div>
-    <div class="sheet-card-grid">
-    @foreach (var sheet in Model.Sheets)
+    <div class="workflow-step-grid">
+    @for (var i = 0; i < workflowSheets.Count; i++)
     {
-        <a class="sheet-card" asp-controller="Sheets" asp-action="Details" asp-route-id="@sheet.Id">
-            <div class="sheet-card-top"><span class="sheet-icon"><i class="bi bi-table"></i></span><span class="sheet-id">@sheet.UniqueId</span></div>
-            <h4>@sheet.Name</h4>
-            <p>Open sheet, add rows, create columns and manage records.</p>
-            <span class="sheet-open">Open Sheet <i class="bi bi-arrow-right"></i></span>
+        var sheet = workflowSheets[i];
+        var label = sheet.Name == "Requisition" ? "Service Requisition" : sheet.Name == "Service Approval" ? "Manager Approval" : sheet.Name == "Service Business" ? "Job Creation" : sheet.Name == "Service Logistics" ? "Logistics & Return" : sheet.Name == "Invoice Reception" ? "Invoice & Payment" : sheet.Name;
+        var rowCount = Model.SheetRowCounts.TryGetValue(sheet.Id, out var records) ? records : 0;
+        <a class="workflow-step-card" asp-controller="Sheets" asp-action="Details" asp-route-id="@sheet.Id">
+            <span class="workflow-step-no">@(i + 1)</span>
+            <div><strong>@label</strong><small>@workflowDescriptions.GetValueOrDefault(sheet.Name)</small><em>@rowCount record(s)</em></div>
+            <i class="bi bi-arrow-right"></i>
         </a>
     }
     </div>
 </section>
 
+<section class="panel mt-3">
+    <div class="panel-head sheet-section-head"><div><h3>Other Sheets</h3><p>Supporting operational sheets are kept here separately from the core service lifecycle.</p></div></div>
+    <div class="sheet-card-grid">
+    @foreach (var sheet in otherSheets)
+    {
+        <a class="sheet-card" asp-controller="Sheets" asp-action="Details" asp-route-id="@sheet.Id">
+            <div class="sheet-card-top"><span class="sheet-icon"><i class="bi bi-table"></i></span><span class="sheet-id">@sheet.UniqueId</span></div>
+            <h4>@sheet.Name</h4>
+            <p>Open and manage this operational sheet. @(Model.SheetRowCounts.TryGetValue(sheet.Id, out var otherCount) ? $"{otherCount} record(s)." : "0 records.")</p>
+            <span class="sheet-open">Open Sheet <i class="bi bi-arrow-right"></i></span>
+        </a>
+    }
+    </div>
+</section>
 @if (canManageSheets)
 {
 <div class="modal fade" id="addSheetModal" tabindex="-1" aria-hidden="true">
@@ -80,7 +110,17 @@
             <div class="modal-body">
                 <div class="form-grid-2">
                     <div><label class="form-label">Project Name</label><input class="form-control" name="name" value="@Model.Project.Name" required /></div>
-                    <div><label class="form-label">Project Manager</label><input class="form-control" name="projectManager" value="@Model.Workspace.ProjectManager" /></div>
+                    <div><label class="form-label">Project Manager</label><select class="form-select" name="projectManager"><option value="">-- Select manager --</option>
+                        @if (!string.IsNullOrWhiteSpace(Model.Workspace.ProjectManager) && !Model.AvailableManagers.Any(x => string.Equals(x.Email, Model.Workspace.ProjectManager, StringComparison.OrdinalIgnoreCase) || string.Equals(x.UserName, Model.Workspace.ProjectManager, StringComparison.OrdinalIgnoreCase)))
+                        { <option value="@Model.Workspace.ProjectManager" selected>@Model.Workspace.ProjectManager</option> }
+                        @foreach (var manager in Model.AvailableManagers)
+                        {
+                            var managerValue = manager.Email ?? manager.UserName ?? manager.Id;
+                            var managerLabel = string.IsNullOrWhiteSpace(manager.FullName) ? managerValue : $"{manager.FullName} · {managerValue}";
+                            if (string.Equals(Model.Workspace.ProjectManager, managerValue, StringComparison.OrdinalIgnoreCase)) { <option value="@managerValue" selected>@managerLabel</option> }
+                            else { <option value="@managerValue">@managerLabel</option> }
+                        }
+                    </select><small class="text-muted">The selected manager receives approval notifications for assigned requisitions.</small></div>
                     <div><label class="form-label">Start Date</label><input class="form-control" type="date" name="startDate" value="@(Model.Workspace.StartDate?.ToString("yyyy-MM-dd"))" /></div>
                     <div><label class="form-label">Deadline</label><input class="form-control" type="date" name="deadline" value="@(Model.Workspace.Deadline?.ToString("yyyy-MM-dd"))" /></div>
                     <div><label class="form-label">Budget</label><input class="form-control" type="number" step="0.01" min="0" name="budget" value="@Model.Workspace.Budget" /></div>

@@ -5,6 +5,13 @@
     var company = settings?.CompanyName ?? "Your Company";
     var tagline = settings?.CompanyTagline ?? "Build | Operate | Grow";
     var ctrl = ViewContext.RouteData.Values["controller"]?.ToString() ?? "";
+    var action = ViewContext.RouteData.Values["action"]?.ToString() ?? "";
+    var unreadNotifications = 0;
+    if (User.Identity?.IsAuthenticated == true && !string.IsNullOrWhiteSpace(User.Identity?.Name))
+    {
+        var currentUserId = await Db.Users.AsNoTracking().Where(x => x.UserName == User.Identity!.Name).Select(x => x.Id).FirstOrDefaultAsync();
+        if (!string.IsNullOrWhiteSpace(currentUserId)) unreadNotifications = await Db.WorkflowNotifications.AsNoTracking().CountAsync(x => x.UserId == currentUserId && !x.IsRead);
+    }
 }
 <!DOCTYPE html>
 <html lang="en">
@@ -25,27 +32,32 @@
             <div><div class="brand-name">@company</div><div class="brand-tag">@tagline</div></div>
         </div>
         <nav class="side-nav">
+            <div class="side-nav-label">Operations</div>
             @if (await PermissionService.HasPermissionAsync(User,"Dashboard.View")) { <a class="@(ctrl=="Workspace"?"active":"")" asp-controller="Workspace" asp-action="Index"><i class="bi bi-globe2"></i>Countries & Projects</a> }
-            @if (await PermissionService.HasPermissionAsync(User,"Dashboard.View")) { <a class="@(ctrl=="Dashboard"?"active":"")" asp-controller="Dashboard" asp-action="Index"><i class="bi bi-grid-fill"></i>Dashboard</a> }
-            @if (await PermissionService.HasPermissionAsync(User,"Jobs.View")) { <a class="@(ctrl=="Jobs"?"active":"")" asp-controller="Jobs" asp-action="Index"><i class="bi bi-clipboard2-data"></i>Jobs</a> }
-            @if (await PermissionService.HasPermissionAsync(User,"Jobs.Create")) { <a asp-controller="Jobs" asp-action="Create"><i class="bi bi-plus-circle"></i>Add Job</a> }
-            @if (await PermissionService.HasPermissionAsync(User,"Sheets.View")) { <a class="@(ctrl=="Sheets"?"active":"")" asp-controller="Sheets" asp-action="Index"><i class="bi bi-table"></i>Sheets</a> }
+            @if (await PermissionService.HasPermissionAsync(User,"Dashboard.View")) { <a class="@(ctrl=="Dashboard"?"active":"")" asp-controller="Dashboard" asp-action="Index"><i class="bi bi-grid-fill"></i>Executive Dashboard</a> }
+            @if (await PermissionService.HasPermissionAsync(User,"Sheets.View")) { <a class="@(ctrl=="Sheets" && action!="Columns"?"active":"")" asp-controller="Sheets" asp-action="Index"><i class="bi bi-diagram-3-fill"></i>Service Operations</a> }
+            @if (await PermissionService.HasPermissionAsync(User,"Jobs.View")) { <a class="@(ctrl=="Jobs"?"active":"")" asp-controller="Jobs" asp-action="Index"><i class="bi bi-clipboard2-data"></i>Jobs Register</a> }
             @if (await PermissionService.HasPermissionAsync(User,"Inventory.View")) { <a class="@(ctrl=="Inventory"?"active":"")" asp-controller="Inventory" asp-action="Index"><i class="bi bi-box-seam"></i>Stock Inventory</a> }
             @if (await PermissionService.HasPermissionAsync(User,"Inventory.Requests")) { <a class="@(ctrl=="InventoryRequests"?"active":"")" asp-controller="InventoryRequests" asp-action="Index"><i class="bi bi-box-arrow-in-down"></i>Inventory Requests</a> }
-            @if (await PermissionService.HasPermissionAsync(User,"Departments.Manage")) { <a asp-controller="MasterData" asp-action="Index" asp-route-type="departments"><i class="bi bi-diagram-3"></i>Departments</a> }
-            @if (await PermissionService.HasPermissionAsync(User,"Contractors.Manage")) { <a asp-controller="MasterData" asp-action="Index" asp-route-type="contractors"><i class="bi bi-person-gear"></i>Contractors</a> }
             @if (await PermissionService.HasPermissionAsync(User,"Reports.View")) { <a class="@(ctrl=="Reports"?"active":"")" asp-controller="Reports" asp-action="Index"><i class="bi bi-bar-chart"></i>Reports</a> }
-            @if (await PermissionService.HasPermissionAsync(User,"Users.View")) { <a class="@(ctrl=="Users"?"active":"")" asp-controller="Users" asp-action="Index"><i class="bi bi-people"></i>Users</a> }
-            @if (await PermissionService.HasPermissionAsync(User,"Permissions.Manage")) { <a class="@(ctrl=="Permissions"?"active":"")" asp-controller="Permissions" asp-action="Index"><i class="bi bi-shield-lock"></i>Users & Permissions</a> }
+
+            <div class="side-nav-label">Administration</div>
+            @if (await PermissionService.HasPermissionAsync(User,"Sheets.Manage")) { <a class="@(ctrl=="Sheets" && action=="Columns"?"active":"")" asp-controller="Sheets" asp-action="Columns"><i class="bi bi-layout-three-columns"></i>Column Management</a> }
+            @if (await PermissionService.HasPermissionAsync(User,"Departments.Manage")) { <a asp-controller="MasterData" asp-action="Index" asp-route-type="departments"><i class="bi bi-diagram-3"></i>Departments</a> }
+            @if (await PermissionService.HasPermissionAsync(User,"Contractors.Manage")) { <a asp-controller="MasterData" asp-action="Index" asp-route-type="contractors"><i class="bi bi-person-gear"></i>Vendors / Contractors</a> }
+            @if (await PermissionService.HasPermissionAsync(User,"Users.View")) { <a class="@(ctrl=="Users"?"active":"")" asp-controller="Users" asp-action="Index"><i class="bi bi-people"></i>Employees / Users</a> }
+            @if (await PermissionService.HasPermissionAsync(User,"Permissions.Manage")) { <a class="@(ctrl=="Permissions"?"active":"")" asp-controller="Permissions" asp-action="Index"><i class="bi bi-shield-lock"></i>Roles & Permissions</a> }
             @if (await PermissionService.HasPermissionAsync(User,"MasterData.Manage")) { <a class="@(ctrl=="MasterData"?"active":"")" asp-controller="MasterData" asp-action="Index" asp-route-type="currencies"><i class="bi bi-database-gear"></i>Master Data</a> }
             @if (await PermissionService.HasPermissionAsync(User,"Audit.View")) { <a class="@(ctrl=="AuditLogs"?"active":"")" asp-controller="AuditLogs" asp-action="Index"><i class="bi bi-journal-text"></i>Audit Log</a> }
             @if (await PermissionService.HasPermissionAsync(User,"Settings.Manage")) { <a class="@(ctrl=="Settings"?"active":"")" asp-controller="Settings" asp-action="Index"><i class="bi bi-gear"></i>Settings</a> }
         </nav>
-        <div class="sidebar-footer">BGP Management System<br/><span>Version 2.1</span></div>
+        <div class="sidebar-footer"><strong>BGP Management System</strong><br/><span>Version 2.3</span><small>System developed by Muhammad Adil</small></div>
     </aside>
     <header class="topbar">
         <button class="icon-btn" id="sidebarToggle" type="button" aria-label="Toggle navigation menu" aria-controls="sidebar" aria-expanded="true"><i class="bi bi-list"></i></button>
+        <div class="topbar-context"><small>BGP Workspace</small><strong>@ViewData["Title"]</strong></div>
         <form asp-controller="Jobs" asp-action="Index" method="get" class="top-search"><input name="q" placeholder="Search jobs, project, contractor..."/><button><i class="bi bi-search"></i></button></form>
+        <a class="notification-bell" asp-controller="Notifications" asp-action="Index" title="Workflow notifications"><i class="bi bi-bell"></i>@if(unreadNotifications>0){<span>@(unreadNotifications > 99 ? "99+" : unreadNotifications.ToString())</span>}</a>
         <a class="top-user text-decoration-none text-reset" asp-controller="Account" asp-action="Profile"><div class="avatar"><i class="bi bi-person-fill"></i></div><div><strong>@User.Identity?.Name</strong><small>My Profile</small></div></a>
         <form asp-controller="Account" asp-action="Logout" method="post"><button class="icon-btn" title="Logout"><i class="bi bi-box-arrow-right"></i></button></form>
     </header>

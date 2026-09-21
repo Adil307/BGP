@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using System.Text;
 using System.Security.Cryptography;
@@ -86,7 +87,20 @@ public class JobsController : Controller
             Lines = vm.Lines.Select(x => new JobLine { Description = x.Description.Trim(), UnitId = x.UnitId, Quantity = x.Quantity, UnitRate = x.UnitRate, CurrencyId = x.CurrencyId }).ToList()
         };
         _db.Jobs.Add(job);
-        await _db.SaveChangesAsync();
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
+        {
+            // This also protects against a double-click / concurrent submit race.
+            // Business-rule validation normally catches duplicates before save, but
+            // the database remains the final source of truth.
+            ModelState.AddModelError(string.Empty, "This job could not be saved because an active duplicate or conflicting job number already exists. Please review the existing jobs and try again.");
+            vm.JobNumber = "Auto-generated on save";
+            await FillListsAsync(vm);
+            return View(vm);
+        }
         await _audit.WriteAsync(HttpContext, "Create", "Job", job.Id, job.JobNumber);
         TempData["Success"] = $"Job {job.JobNumber} created successfully.";
         return RedirectToAction(nameof(Details), new { id = job.Id });
@@ -172,6 +186,17 @@ public class JobsController : Controller
         var job = await _db.Jobs.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Id == id && x.IsDeleted);
         if (job == null) return NotFound();
         if (!await CanAccessDepartment(job.DepartmentId)) return Forbid();
+
+        // A replacement job may have been created after this record was moved to
+        // the recycle bin. The active-only unique index allows that workflow, but
+        // restoring the old row would then create two active duplicates.
+        var activeDuplicateExists = await _db.Jobs.AnyAsync(x => x.DeduplicationKey == job.DeduplicationKey);
+        if (activeDuplicateExists)
+        {
+            TempData["Error"] = $"Job {job.JobNumber} cannot be restored because an active job with the same project, department, contractor, date and description already exists.";
+            return RedirectToAction(nameof(RecycleBin));
+        }
+
         job.IsDeleted = false; job.DeletedAt = null; job.DeletedByUserId = null; job.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         await _audit.WriteAsync(HttpContext, "Restore", "Job", id, job.JobNumber);
@@ -223,8 +248,26 @@ public class JobsController : Controller
         var duplicateKey = BuildDeduplicationKey(vm);
         var duplicate = await _db.Jobs.AnyAsync(x => x.Id != currentId && x.DeduplicationKey == duplicateKey);
         if (duplicate) ModelState.AddModelError(string.Empty, "A duplicate job already exists for the same project, department, contractor, date and description.");
+        var invoice = vm.InvoiceNumber?.Trim();
+        if (!string.IsNullOrWhiteSpace(invoice))
+        {
+            var upper = invoice.ToUpper();
+            var duplicateInvoiceInJobs = await _db.Jobs.IgnoreQueryFilters().AnyAsync(x => !x.IsDeleted && x.Id != currentId && x.InvoiceNumber != null && x.InvoiceNumber.ToUpper() == upper);
+            var invoiceColumnIds = (await _db.SheetColumns.AsNoTracking().Select(x => new { x.Id, x.Name }).ToListAsync())
+                .Where(x => IsInvoiceColumnName(x.Name)).Select(x => x.Id).ToList();
+            var duplicateInvoiceInSheets = invoiceColumnIds.Count > 0 && await _db.SheetCells.AsNoTracking()
+                .AnyAsync(x => invoiceColumnIds.Contains(x.SheetColumnId) && x.Value != null && x.Value.ToUpper() == upper);
+            if (duplicateInvoiceInJobs || duplicateInvoiceInSheets)
+                ModelState.AddModelError(nameof(vm.InvoiceNumber), $"Invoice number {invoice} already exists. Duplicate invoices are not allowed anywhere in BGP.");
+        }
         var duplicateLine = vm.Lines.GroupBy(x => new { Desc = (x.Description ?? "").Trim().ToLowerInvariant(), x.UnitId, x.CurrencyId, x.Quantity, x.UnitRate }).Any(g => g.Count() > 1);
         if (duplicateLine) ModelState.AddModelError(nameof(vm.Lines), "Duplicate line items are not allowed.");
+    }
+
+    private static bool IsInvoiceColumnName(string name)
+    {
+        var normalized = new string((name ?? string.Empty).Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant();
+        return normalized.Contains("INVOICE") && (normalized.EndsWith("NO") || normalized.Contains("NUMBER"));
     }
 
     private async Task<bool> CanAccessDepartment(int departmentId)
@@ -238,6 +281,9 @@ public class JobsController : Controller
         var raw = $"{vm.ProjectId}|{vm.DepartmentId}|{vm.ContractorId}|{vm.JobDate:yyyy-MM-dd}|{(vm.Description ?? string.Empty).Trim().ToUpperInvariant()}";
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(raw)));
     }
+
+    private static bool IsUniqueConstraintViolation(DbUpdateException ex)
+        => ex.InnerException is SqlException sql && (sql.Number == 2601 || sql.Number == 2627);
 
     private static string Csv(string? value) => $"\"{(value ?? string.Empty).Replace("\"", "\"\"")}\"";
 }

@@ -1,0 +1,40 @@
+@model List<WorkflowNotification>
+@{ ViewData["Title"] = "Notifications"; }
+
+<div class="page-heading">
+    <div><h1>Notifications</h1><p>Workflow approvals, decisions and follow-up alerts.</p></div>
+    @if (Model.Any(x => !x.IsRead))
+    {
+        <form asp-action="MarkAllRead" method="post"><button class="btn btn-outline-primary"><i class="bi bi-check2-all"></i> Mark all read</button></form>
+    }
+</div>
+
+<section class="panel p-0 overflow-hidden">
+    <div class="notification-list">
+    @if (!Model.Any())
+    {
+        <div class="empty-state"><i class="bi bi-bell"></i><h3>No notifications</h3><p>Workflow updates will appear here.</p></div>
+    }
+    @foreach (var item in Model)
+    {
+        <div class="notification-row @(item.IsRead ? "" : "unread")">
+            <div class="notification-icon"><i class="bi bi-bell-fill"></i></div>
+            <div class="notification-copy">
+                <strong>@item.Title</strong>
+                <p>@item.Message</p>
+                <small>@item.CreatedAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")</small>
+            </div>
+            <div>
+            @if (!string.IsNullOrWhiteSpace(item.Url))
+            {
+                <form asp-action="MarkRead" method="post"><input type="hidden" name="id" value="@item.Id"/><button class="btn btn-sm btn-primary">Open</button></form>
+            }
+            else if (!item.IsRead)
+            {
+                <form asp-action="MarkRead" method="post"><input type="hidden" name="id" value="@item.Id"/><button class="btn btn-sm btn-outline-secondary">Mark read</button></form>
+            }
+            </div>
+        </div>
+    }
+    </div>
+</section>

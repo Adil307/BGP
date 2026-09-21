@@ -1,21 +1,62 @@
 @model SheetRowFormVm
 @{
     var editing = Model.Row != null;
-    ViewData["Title"] = editing ? $"Edit {Model.Row!.UniqueId}" : $"Add Row - {Model.Sheet.Name}";
+    var isServiceBusiness = Model.Sheet.Name.Equals("Service Business", StringComparison.OrdinalIgnoreCase);
+    var isServiceApproval = Model.Sheet.Name.Equals("Service Approval", StringComparison.OrdinalIgnoreCase);
+    var displaySheetName = Model.Sheet.Name == "Requisition" ? "Service Requisition"
+        : isServiceApproval ? "Manager Approval"
+        : Model.Sheet.Name == "Service Business" ? "Job Creation"
+        : Model.Sheet.Name == "Service Logistics" ? "Logistics & Return"
+        : Model.Sheet.Name == "Invoice Reception" ? "Invoice & Payment"
+        : Model.Sheet.Name;
+    var addLabel = isServiceBusiness ? "Add Job" : isServiceApproval ? "Submit for Approval" : "Add Row";
+    ViewData["Title"] = editing ? $"Edit {Model.Row!.UniqueId}" : $"{addLabel} - {displaySheetName}";
     var localAbroadCol = Model.Columns.FirstOrDefault(x => x.Name.Equals("Local/Abroad", StringComparison.OrdinalIgnoreCase));
+    var logisticsModeCol = Model.Sheet.Name.Equals("Service Logistics", StringComparison.OrdinalIgnoreCase) ? Model.Columns.FirstOrDefault(x => x.Name.Equals("Mode", StringComparison.OrdinalIgnoreCase)) : null;
     var exportJobCol = Model.Columns.FirstOrDefault(x => x.Name.Equals("Export Job No", StringComparison.OrdinalIgnoreCase));
     var importJobCol = Model.Columns.FirstOrDefault(x => x.Name.Equals("Import Job No", StringComparison.OrdinalIgnoreCase));
+    var isRequisition = Model.Sheet.Name.Equals("Requisition", StringComparison.OrdinalIgnoreCase);
+    var isPurchaseOrder = Model.Sheet.Name.Equals("Purchase Order", StringComparison.OrdinalIgnoreCase);
+    var isServiceLogistics = Model.Sheet.Name.Equals("Service Logistics", StringComparison.OrdinalIgnoreCase);
+    var isInvoiceReception = Model.Sheet.Name.Equals("Invoice Reception", StringComparison.OrdinalIgnoreCase);
 }
 
 <div class="page-heading">
     <div>
-        <a class="workspace-back" asp-action="Details" asp-route-id="@Model.Sheet.Id"><i class="bi bi-arrow-left"></i> @Model.Sheet.Name</a>
-        <h1>@(editing ? $"Edit {Model.Row!.UniqueId}" : "Add Row")</h1>
+        <a class="workspace-back" asp-action="Details" asp-route-id="@Model.Sheet.Id"><i class="bi bi-arrow-left"></i> @displaySheetName</a>
+        <h1>@(editing ? $"Edit {Model.Row!.UniqueId}" : addLabel)</h1>
         <p>@Model.Sheet.UniqueId · Values are stored inside this sheet only.</p>
     </div>
 </div>
 
 <section class="panel sheet-row-form-panel">
+    @if (isServiceApproval)
+    {
+        <div class="workflow-form-notice approval-notice">
+            <i class="bi bi-person-check-fill"></i>
+            <div><strong>Manager Approval</strong><span>Submit the linked requisition to the responsible PM/manager for a formal decision. The assigned approver receives a notification and must approve or reject the request before Job Creation can continue.</span></div>
+        </div>
+    }
+    else if (isRequisition)
+    {
+        <div class="workflow-form-notice"><i class="bi bi-file-earmark-text"></i><div><strong>Step 1 · Requisition</strong><span>Record the service requirement, quantity and required date. The next step is Manager Approval.</span></div></div>
+    }
+    else if (isServiceBusiness)
+    {
+        <div class="workflow-form-notice"><i class="bi bi-briefcase-fill"></i><div><strong>Step 3 · Job Creation</strong><span>A valid requisition and an approved Manager Approval record are required before a job can be created.</span></div></div>
+    }
+    else if (isPurchaseOrder)
+    {
+        <div class="workflow-form-notice"><i class="bi bi-receipt"></i><div><strong>Step 4 · Purchase Order</strong><span>Create the vendor PO against an approved service job and record quotation/terms.</span></div></div>
+    }
+    else if (isServiceLogistics)
+    {
+        <div class="workflow-form-notice"><i class="bi bi-truck"></i><div><strong>Step 5 · Logistics & Return</strong><span>Track local delivery or international export, follow-up, received-back date and import reference.</span></div></div>
+    }
+    else if (isInvoiceReception)
+    {
+        <div class="workflow-form-notice"><i class="bi bi-cash-stack"></i><div><strong>Step 6 · Invoice & Payment Follow-up</strong><span>Invoice reception starts after the equipment/service is received back. Duplicate invoice numbers are blocked across BGP.</span></div></div>
+    }
     <form asp-action="@(editing ? "EditRowPost" : "AddRowPost")" method="post" enctype="multipart/form-data">
         @if (editing) { <input type="hidden" name="id" value="@Model.Row!.Id"/> } else { <input type="hidden" name="sheetId" value="@Model.Sheet.Id"/> }
         <div asp-validation-summary="All" class="text-danger mb-3"></div>
@@ -33,6 +74,36 @@
                 {
                     <input id="@fieldId" class="form-control system-managed-field" type="text" name="@fieldName" value="@value" readonly placeholder="@(isAuto ? "Auto-generated on save" : "Calculated automatically")" />
                     <small class="text-muted">@(isAuto ? "System-generated unique value." : "Calculated automatically from linked sheet data.")</small>
+                }
+                else if (col.Options == "__APPROVAL_MANAGERS__")
+                {
+                    <select id="@fieldId" class="form-select" name="@fieldName">
+                        <option value="">-- Select responsible manager --</option>
+                        @foreach (var manager in Model.ApprovalManagers)
+                        {
+                            var managerValue = manager.Email ?? manager.UserName ?? manager.Id;
+                            var managerLabel = string.IsNullOrWhiteSpace(manager.FullName) ? managerValue : $"{manager.FullName} · {managerValue}";
+                            if (string.Equals(managerValue, value, StringComparison.OrdinalIgnoreCase)) { <option selected value="@managerValue">@managerLabel</option> }
+                            else { <option value="@managerValue">@managerLabel</option> }
+                        }
+                    </select>
+                    <small class="text-muted">This manager receives the approval notification and is responsible for the decision.</small>
+                }
+                else if (!string.IsNullOrWhiteSpace(col.Options) && Model.ReferenceOptions.TryGetValue(col.Options, out var referenceValues))
+                {
+                    <select id="@fieldId" class="form-select" name="@fieldName">
+                        <option value="">-- Select @col.Name --</option>
+                        @if (!string.IsNullOrWhiteSpace(value) && !referenceValues.Contains(value, StringComparer.OrdinalIgnoreCase))
+                        {
+                            <option selected value="@value">@value</option>
+                        }
+                        @foreach (var option in referenceValues)
+                        {
+                            if (string.Equals(option, value, StringComparison.OrdinalIgnoreCase)) { <option selected value="@option">@option</option> }
+                            else { <option value="@option">@option</option> }
+                        }
+                    </select>
+                    @if (!referenceValues.Any()) { <small class="text-warning">No eligible records are available from the previous workflow step yet.</small> }
                 }
                 else if (col.Options == "__DEPARTMENTS__")
                 {
@@ -114,17 +185,18 @@
         </div>
         @if (!Model.Columns.Any())
         {
-            <div class="alert alert-warning">This sheet is intentionally empty. Add the columns you need from the sheet page before creating rows.</div>
+            <div class="alert alert-warning">This sheet is intentionally empty. Add the columns you need from Column Management before creating records.</div>
         }
-        <div class="form-actions mt-4"><a class="btn btn-light border" asp-action="Details" asp-route-id="@Model.Sheet.Id">Cancel</a>@if(Model.Columns.Any()){<button class="btn btn-primary"><i class="bi bi-check2"></i> @(editing ? "Save Changes" : "Add Row")</button>}else{<button class="btn btn-primary" type="button" disabled><i class="bi bi-check2"></i> Add Row</button>}</div>
+        <div class="form-actions mt-4"><a class="btn btn-light border" asp-action="Details" asp-route-id="@Model.Sheet.Id">Cancel</a>@if(Model.Columns.Any()){<button class="btn btn-primary"><i class="bi bi-check2"></i> @(editing ? "Save Changes" : addLabel)</button>}else{<button class="btn btn-primary" type="button" disabled><i class="bi bi-check2"></i> @addLabel</button>}</div>
     </form>
 </section>
 
-@if (localAbroadCol != null && exportJobCol != null && importJobCol != null)
+@if ((localAbroadCol != null || logisticsModeCol != null) && exportJobCol != null && importJobCol != null)
 {
+    var localSelectorId = localAbroadCol?.Id ?? logisticsModeCol!.Id;
 <script>
 (function () {
-    const selector = document.getElementById('sheet_col_@localAbroadCol.Id');
+    const selector = document.getElementById('sheet_col_@localSelectorId');
     const exportField = document.querySelector('[data-column-name="Export Job No"]');
     const importField = document.querySelector('[data-column-name="Import Job No"]');
     function updateVisibility() {

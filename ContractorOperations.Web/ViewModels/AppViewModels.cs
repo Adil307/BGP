@@ -41,6 +41,21 @@ public class DashboardVm
     public int AcceptedInventoryRequests { get; set; }
     public int RejectedInventoryRequests { get; set; }
     public int SheetCount { get; set; }
+    public int TotalSheetRows { get; set; }
+    public int ActiveUserCount { get; set; }
+    public int InactiveUserCount { get; set; }
+    public int ActiveCountryCount { get; set; }
+    public int OpenWorkCount { get; set; }
+    public int WorkCompletionPercent { get; set; }
+    public int AverageProjectProgress { get; set; }
+    public int PendingServiceApprovals { get; set; }
+    public int ApprovedServiceApprovals { get; set; }
+    public int RejectedServiceApprovals { get; set; }
+    public int PendingInvoices { get; set; }
+    public int PaidInvoices { get; set; }
+    public Dictionary<string,int> WorkflowStageCounts { get; set; } = new();
+    public Dictionary<string,int> ProjectStatusCounts { get; set; } = new();
+    public Dictionary<string,int> RoleUserCounts { get; set; } = new();
     public Dictionary<string,decimal> InventoryValueByCurrency { get; set; } = new();
     public List<RoleSummaryVm> RoleSummaries { get; set; } = new();
 }
@@ -258,6 +273,8 @@ public class ProjectWorkspaceDashboardVm
     public int InventoryRequestCount { get; set; }
     public int PendingInventoryRequests { get; set; }
     public int CompletedJobs { get; set; }
+    public Dictionary<int,int> SheetRowCounts { get; set; } = new();
+    public List<ApplicationUser> AvailableManagers { get; set; } = new();
 }
 
 public class SheetIndexVm
@@ -267,6 +284,13 @@ public class SheetIndexVm
     public List<Department> Departments { get; set; } = new();
 }
 
+public class ColumnManagementVm
+{
+    public List<ProjectSheet> Sheets { get; set; } = new();
+    public ProjectSheet? SelectedSheet { get; set; }
+    public List<SheetColumn> Columns { get; set; } = new();
+}
+
 public class SheetDetailsVm
 {
     public ProjectSheet Sheet { get; set; } = new();
@@ -274,6 +298,7 @@ public class SheetDetailsVm
     public List<SheetRow> Rows { get; set; } = new();
     public string? Search { get; set; }
     public int? LinkedImportExportSheetId { get; set; }
+    public List<ProjectSheet> WorkflowSheets { get; set; } = new();
 }
 
 public class SheetRowFormVm
@@ -285,6 +310,8 @@ public class SheetRowFormVm
     public List<Department> Departments { get; set; } = new();
     public List<Project> Projects { get; set; } = new();
     public List<Currency> Currencies { get; set; } = new();
+    public Dictionary<string,List<string>> ReferenceOptions { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public List<ApplicationUser> ApprovalManagers { get; set; } = new();
 }
 
 public class InventoryRequestListVm

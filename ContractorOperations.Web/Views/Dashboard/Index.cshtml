@@ -15,39 +15,64 @@
 
 <div class="dashboard-hero">
     <div>
-        <div class="eyebrow"><i class="bi bi-stars"></i> Operations Control Center</div>
+        <div class="eyebrow"><i class="bi bi-stars"></i> BGP Executive Operations Control Center</div>
         <h1>Welcome, @Model.UserName</h1>
-        <p>Track contractor jobs, department workload, costs and stock activity from one clear dashboard.</p>
+        <p>One operational view for people, projects, service workflow, jobs, approvals, inventory, costs and payment follow-up.</p>
     </div>
     <div class="page-actions dashboard-actions">
         @if (canManageProjects)
         {
             <a class="btn btn-light border" asp-controller="Workspace" asp-action="Index"><i class="bi bi-briefcase"></i> Projects</a>
         }
-        <a class="btn btn-primary" asp-controller="Jobs" asp-action="Create"><i class="bi bi-plus-lg"></i> Add New Job</a>
+        <a class="btn btn-primary" asp-controller="Sheets" asp-action="Index"><i class="bi bi-plus-lg"></i> Add Job</a>
     </div>
 </div>
 
-<div class="kpi-grid">
-    <div class="kpi blue"><div class="kpi-icon"><i class="bi bi-clipboard2-data"></i></div><div><strong>@Model.TotalJobs</strong><span>Total Jobs Logged</span><small>All accessible jobs</small></div></div>
-    <div class="kpi green"><div class="kpi-icon"><i class="bi bi-check-circle"></i></div><div><strong>@Model.CompletedJobs</strong><span>Completed Jobs</span><small>Closed operations</small></div></div>
-    <div class="kpi amber"><div class="kpi-icon"><i class="bi bi-clock-history"></i></div><div><strong>@Model.InProgressJobs</strong><span>In Progress</span><small>Currently active</small></div></div>
-    <div class="kpi red"><div class="kpi-icon"><i class="bi bi-pause-circle"></i></div><div><strong>@Model.OnHoldCancelledJobs</strong><span>On Hold / Cancelled</span><small>Needs attention</small></div></div>
+<div class="executive-kpi-grid">
+    <div class="executive-kpi blue"><span class="executive-kpi-icon"><i class="bi bi-clipboard2-data"></i></span><div><small>Total Jobs</small><strong>@Model.TotalJobs</strong><em>@Model.CompletedJobs completed</em></div></div>
+    <div class="executive-kpi green"><span class="executive-kpi-icon"><i class="bi bi-check2-circle"></i></span><div><small>Work Completion</small><strong>@Model.WorkCompletionPercent%</strong><em>@Model.OpenWorkCount open jobs</em></div></div>
+    <div class="executive-kpi purple"><span class="executive-kpi-icon"><i class="bi bi-people-fill"></i></span><div><small>Active Employees</small><strong>@Model.ActiveUserCount</strong><em>@Model.InactiveUserCount inactive</em></div></div>
+    <div class="executive-kpi cyan"><span class="executive-kpi-icon"><i class="bi bi-buildings-fill"></i></span><div><small>Projects</small><strong>@Model.ProjectCount</strong><em>@Model.AverageProjectProgress% avg. progress</em></div></div>
+    <div class="executive-kpi amber"><span class="executive-kpi-icon"><i class="bi bi-person-check-fill"></i></span><div><small>PM Approvals Pending</small><strong>@Model.PendingServiceApprovals</strong><em>@Model.ApprovedServiceApprovals approved</em></div></div>
+    <div class="executive-kpi red"><span class="executive-kpi-icon"><i class="bi bi-receipt-cutoff"></i></span><div><small>Invoices Awaiting Payment</small><strong>@Model.PendingInvoices</strong><em>@Model.PaidInvoices paid</em></div></div>
 </div>
 
-<div class="kpi-grid mt-3 secondary-kpis">
-    <a class="kpi purple text-decoration-none" asp-controller="Workspace" asp-action="Index"><div class="kpi-icon"><i class="bi bi-buildings"></i></div><div><strong>@Model.ProjectCount</strong><span>Active Projects</span><small>@Model.ActiveProjectCount active · @Model.CompletedProjectCount completed · @Model.PendingProjectCount pending</small></div></a>
-    @if (canViewInventoryRequests)
-    {
-        <a class="kpi amber text-decoration-none" asp-controller="InventoryRequests" asp-action="Index" asp-route-status="Pending"><div class="kpi-icon"><i class="bi bi-hourglass-split"></i></div><div><strong>@Model.PendingInventoryRequests</strong><span>Pending Inventory</span><small>@Model.TotalInventoryRequests total requests</small></div></a>
-        <a class="kpi green text-decoration-none" asp-controller="InventoryRequests" asp-action="Index" asp-route-status="Accepted"><div class="kpi-icon"><i class="bi bi-check2-square"></i></div><div><strong>@Model.AcceptedInventoryRequests</strong><span>Accepted Inventory</span><small>Approved requests</small></div></a>
-    }
-    else
-    {
-        <div class="kpi amber"><div class="kpi-icon"><i class="bi bi-hourglass-split"></i></div><div><strong>@Model.PendingInventoryRequests</strong><span>Pending Inventory</span><small>@Model.TotalInventoryRequests total requests</small></div></div>
-        <div class="kpi green"><div class="kpi-icon"><i class="bi bi-check2-square"></i></div><div><strong>@Model.AcceptedInventoryRequests</strong><span>Accepted Inventory</span><small>Approved requests</small></div></div>
-    }
-    <a class="kpi blue text-decoration-none" asp-controller="Sheets" asp-action="Index"><div class="kpi-icon"><i class="bi bi-table"></i></div><div><strong>@Model.SheetCount</strong><span>Dynamic Sheets</span><small>Project & department sheets</small></div></a>
+<section class="panel mt-3 system-coverage-panel">
+    <div class="panel-head"><div><h3>System Coverage</h3><p>Live operational footprint across the BGP platform</p></div><span class="panel-badge">A–Z Overview</span></div>
+    <div class="system-coverage-grid">
+        <div class="coverage-item"><i class="bi bi-globe2"></i><strong>@Model.ActiveCountryCount</strong><span>Countries</span></div>
+        <div class="coverage-item"><i class="bi bi-buildings"></i><strong>@Model.ProjectCount</strong><span>Projects</span></div>
+        <div class="coverage-item"><i class="bi bi-diagram-3"></i><strong>@Model.DepartmentCount</strong><span>Departments</span></div>
+        <div class="coverage-item"><i class="bi bi-people"></i><strong>@Model.ActiveUserCount</strong><span>Employees / Users</span></div>
+        <div class="coverage-item"><i class="bi bi-person-gear"></i><strong>@Model.ContractorCount</strong><span>Vendors / Contractors</span></div>
+        <div class="coverage-item"><i class="bi bi-table"></i><strong>@Model.SheetCount</strong><span>Operational Sheets</span></div>
+        <div class="coverage-item"><i class="bi bi-list-check"></i><strong>@Model.TotalSheetRows</strong><span>Sheet Records</span></div>
+        <div class="coverage-item"><i class="bi bi-box-seam"></i><strong>@Model.TotalStockItems</strong><span>Stock Items</span></div>
+        <div class="coverage-item"><i class="bi bi-box-arrow-in-down"></i><strong>@Model.TotalInventoryRequests</strong><span>Inventory Requests</span></div>
+    </div>
+</section>
+
+<div class="dashboard-grid-2 mt-3 dashboard-analytics executive-analytics">
+    <section class="panel chart-panel">
+        <div class="panel-head"><div><h3>Work Done vs Remaining</h3><p>Completed operational jobs compared with active/open work</p></div><span class="panel-badge">@Model.WorkCompletionPercent% Complete</span></div>
+        <div class="chart-box chart-box-lg"><canvas id="workCompletionChart"></canvas></div>
+    </section>
+    <section class="panel chart-panel">
+        <div class="panel-head"><div><h3>Project Status</h3><p>Portfolio status across all active BGP projects</p></div><span class="panel-badge">Portfolio</span></div>
+        <div class="chart-box chart-box-lg"><canvas id="projectStatusChart"></canvas></div>
+    </section>
+</div>
+
+<div class="dashboard-grid-2 mt-3 dashboard-analytics executive-analytics">
+    <section class="panel chart-panel">
+        <div class="panel-head"><div><h3>Service Operations Lifecycle</h3><p>Operational volume from requisition through approval, job execution, procurement, logistics, and payment closure</p></div><a asp-controller="Sheets" asp-action="Index">Open operations <i class="bi bi-arrow-right"></i></a></div>
+        <div class="chart-box chart-box-lg"><canvas id="workflowChart"></canvas></div>
+        <div class="workflow-health-strip"><span><b>@Model.PendingServiceApprovals</b> pending PM approval</span><span><b>@Model.ApprovedServiceApprovals</b> approved</span><span><b>@Model.RejectedServiceApprovals</b> rejected</span></div>
+    </section>
+    <section class="panel chart-panel">
+        <div class="panel-head"><div><h3>Employees by Role</h3><p>Active system users grouped by operational access role</p></div><span class="panel-badge">Workforce</span></div>
+        <div class="chart-box chart-box-lg"><canvas id="userRoleChart"></canvas></div>
+    </section>
 </div>
 
 <div class="dashboard-grid-2 dashboard-analytics">
@@ -116,7 +141,7 @@
     </div>
     <div class="table-responsive">
         <table class="table table-hover align-middle">
-            <thead><tr><th>Job No.</th><th>Project</th><th>Department</th><th>Contractor</th><th>Description</th><th>Status</th><th>Date</th><th></th></tr></thead>
+            <thead><tr><th>Job No.</th><th>Project</th><th>Department</th><th>Vendor / Contractor</th><th>Description</th><th>Status</th><th>Date</th><th></th></tr></thead>
             <tbody>
             @if (Model.RecentJobs.Any())
             {
@@ -159,7 +184,7 @@
         </div>
         <div class="quick-row">
             <a class="quick blue" asp-controller="Inventory" asp-action="Index"><i class="bi bi-box-seam"></i><span>Inventory</span></a>
-            <a class="quick green" asp-controller="Inventory" asp-action="Receive"><i class="bi bi-box-arrow-in-down"></i><span>Receive</span></a>
+            <a class="quick green" asp-controller="Inventory" asp-action="Receive"><i class="bi bi-box-arrow-in-down"></i><span>Add Stock</span></a>
             <a class="quick amber" asp-controller="Inventory" asp-action="Issue"><i class="bi bi-box-arrow-up"></i><span>Issue</span></a>
             <a class="quick purple" asp-controller="Inventory" asp-action="Transfer"><i class="bi bi-arrow-left-right"></i><span>Transfer</span></a>
         </div>
@@ -178,7 +203,7 @@
             }
             @if (canManageContractors)
             {
-                <a class="setup-card" asp-controller="MasterData" asp-action="Index" asp-route-type="contractors"><span class="setup-icon green"><i class="bi bi-person-gear"></i></span><div><strong>Contractors</strong><small>@Model.ContractorCount active</small></div><i class="bi bi-plus-circle setup-plus"></i></a>
+                <a class="setup-card" asp-controller="MasterData" asp-action="Index" asp-route-type="contractors"><span class="setup-icon green"><i class="bi bi-person-gear"></i></span><div><strong>Vendors / Contractors</strong><small>@Model.ContractorCount active</small></div><i class="bi bi-plus-circle setup-plus"></i></a>
             }
             @if (canManageMasterData)
             {
@@ -220,6 +245,48 @@
     const textColor = '#637089';
     Chart.defaults.font.family = "Inter, system-ui, -apple-system, 'Segoe UI', sans-serif";
     Chart.defaults.color = textColor;
+
+    const workCompletionCanvas = document.getElementById('workCompletionChart');
+    if (workCompletionCanvas) {
+        new Chart(workCompletionCanvas, {
+            type: 'doughnut',
+            data: { labels: ['Completed','Remaining'], datasets: [{ data: [@Model.CompletedJobs, @Model.OpenWorkCount], backgroundColor: ['#20a754','#dbe7f6'], borderWidth: 3, borderColor: '#fff' }] },
+            options: { responsive: true, maintainAspectRatio: false, cutout: '72%', plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, pointStyle: 'circle' } } } }
+        });
+    }
+
+    const projectStatusLabels = @Html.Raw(JsonSerializer.Serialize(Model.ProjectStatusCounts.Keys));
+    const projectStatusValues = @Html.Raw(JsonSerializer.Serialize(Model.ProjectStatusCounts.Values));
+    const projectStatusCanvas = document.getElementById('projectStatusChart');
+    if (projectStatusCanvas) {
+        new Chart(projectStatusCanvas, {
+            type: 'doughnut',
+            data: { labels: projectStatusLabels, datasets: [{ data: projectStatusValues, backgroundColor: projectStatusLabels.map((_, i) => palette[i % palette.length]), borderWidth: 3, borderColor: '#fff' }] },
+            options: { responsive: true, maintainAspectRatio: false, cutout: '66%', plugins: { legend: { position: 'right', labels: { usePointStyle: true, pointStyle: 'circle', boxWidth: 8 } } } }
+        });
+    }
+
+    const workflowLabels = @Html.Raw(JsonSerializer.Serialize(Model.WorkflowStageCounts.Keys));
+    const workflowValues = @Html.Raw(JsonSerializer.Serialize(Model.WorkflowStageCounts.Values));
+    const workflowCanvas = document.getElementById('workflowChart');
+    if (workflowCanvas) {
+        new Chart(workflowCanvas, {
+            type: 'bar',
+            data: { labels: workflowLabels, datasets: [{ label: 'Records', data: workflowValues, backgroundColor: workflowLabels.map((_, i) => palette[i % palette.length]), borderRadius: 7, maxBarThickness: 44 }] },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: false } }, y: { beginAtZero: true, grid: { color: gridColor }, ticks: { precision: 0 } } } }
+        });
+    }
+
+    const userRoleLabels = @Html.Raw(JsonSerializer.Serialize(Model.RoleUserCounts.Keys));
+    const userRoleValues = @Html.Raw(JsonSerializer.Serialize(Model.RoleUserCounts.Values));
+    const userRoleCanvas = document.getElementById('userRoleChart');
+    if (userRoleCanvas) {
+        new Chart(userRoleCanvas, {
+            type: 'bar',
+            data: { labels: userRoleLabels, datasets: [{ label: 'Users', data: userRoleValues, backgroundColor: '#2f80ed', borderRadius: 7, maxBarThickness: 34 }] },
+            options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, grid: { color: gridColor }, ticks: { precision: 0 } }, y: { grid: { display: false } } } }
+        });
+    }
 
     const monthlyLabels = @Html.Raw(JsonSerializer.Serialize(Model.MonthlyJobs.Keys));
     const monthlyValues = @Html.Raw(JsonSerializer.Serialize(Model.MonthlyJobs.Values));

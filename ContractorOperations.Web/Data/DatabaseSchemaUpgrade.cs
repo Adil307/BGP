@@ -149,6 +149,52 @@ BEGIN
     CREATE INDEX [IX_InventoryRequests_ProjectId] ON [InventoryRequests]([ProjectId]);
     CREATE INDEX [IX_InventoryRequests_RequestedByUserId] ON [InventoryRequests]([RequestedByUserId]);
 END;
+
+
+IF OBJECT_ID(N'[WorkflowNotifications]', N'U') IS NULL
+BEGIN
+    CREATE TABLE [WorkflowNotifications](
+        [Id] bigint IDENTITY(1,1) NOT NULL CONSTRAINT [PK_WorkflowNotifications] PRIMARY KEY,
+        [UserId] nvarchar(450) NOT NULL,
+        [Title] nvarchar(160) NOT NULL,
+        [Message] nvarchar(1000) NOT NULL,
+        [Url] nvarchar(500) NULL,
+        [IsRead] bit NOT NULL CONSTRAINT [DF_WorkflowNotifications_IsRead] DEFAULT(0),
+        [CreatedAt] datetime2 NOT NULL CONSTRAINT [DF_WorkflowNotifications_CreatedAt] DEFAULT(SYSUTCDATETIME()),
+        CONSTRAINT [FK_WorkflowNotifications_AspNetUsers_UserId] FOREIGN KEY([UserId]) REFERENCES [AspNetUsers]([Id]) ON DELETE CASCADE
+    );
+    CREATE INDEX [IX_WorkflowNotifications_UserId_IsRead_CreatedAt]
+        ON [WorkflowNotifications]([UserId],[IsRead],[CreatedAt]);
+END;
+
+-- Soft-deleted jobs must not block creation of a replacement job with the same
+-- business details. Keep de-duplication unique only among active jobs.
+IF OBJECT_ID(N'[Jobs]', N'U') IS NOT NULL
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM sys.indexes
+        WHERE object_id = OBJECT_ID(N'[Jobs]')
+          AND name = N'IX_Jobs_DeduplicationKey'
+          AND (filter_definition IS NULL OR filter_definition NOT LIKE N'%IsDeleted%')
+    )
+    BEGIN
+        DROP INDEX [IX_Jobs_DeduplicationKey] ON [Jobs];
+    END;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM sys.indexes
+        WHERE object_id = OBJECT_ID(N'[Jobs]')
+          AND name = N'IX_Jobs_DeduplicationKey'
+    )
+    BEGIN
+        CREATE UNIQUE INDEX [IX_Jobs_DeduplicationKey]
+            ON [Jobs]([DeduplicationKey])
+            WHERE [IsDeleted] = 0;
+    END;
+END;
+
 ";
 
         await db.Database.ExecuteSqlRawAsync(sql);

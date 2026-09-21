@@ -64,6 +64,12 @@ public class WorkspaceController : Controller
             .Where(x => x.ProjectId == id && x.IsActive)
             .OrderBy(x => x.SortOrder).ThenBy(x => x.Name)
             .ToListAsync();
+        var sheetIds = sheets.Select(x => x.Id).ToList();
+        var rowCounts = sheetIds.Count == 0
+            ? new Dictionary<int, int>()
+            : await _db.SheetRows.AsNoTracking().Where(x => sheetIds.Contains(x.ProjectSheetId))
+                .GroupBy(x => x.ProjectSheetId).Select(g => new { SheetId = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.SheetId, x => x.Count);
 
         return View(new ProjectWorkspaceDashboardVm
         {
@@ -74,7 +80,17 @@ public class WorkspaceController : Controller
             JobCount = await _db.Jobs.CountAsync(x => x.ProjectId == id),
             CompletedJobs = await _db.Jobs.CountAsync(x => x.ProjectId == id && x.Status == JobStatus.Completed),
             InventoryRequestCount = await _db.InventoryRequests.CountAsync(x => x.ProjectId == id),
-            PendingInventoryRequests = await _db.InventoryRequests.CountAsync(x => x.ProjectId == id && x.Status == InventoryRequestStatus.Pending)
+            PendingInventoryRequests = await _db.InventoryRequests.CountAsync(x => x.ProjectId == id && x.Status == InventoryRequestStatus.Pending),
+            SheetRowCounts = rowCounts,
+            AvailableManagers = await (from user in _db.Users.AsNoTracking()
+                                       join userRole in _db.UserRoles.AsNoTracking() on user.Id equals userRole.UserId
+                                       join role in _db.Roles.AsNoTracking() on userRole.RoleId equals role.Id
+                                       where user.IsActive && (role.Name == "Project Manager" || role.Name == "Department Head" || role.Name == "Administrator" || role.Name == "Super Admin")
+                                       select user)
+                                      .Distinct()
+                                      .OrderBy(x => x.FullName)
+                                      .ThenBy(x => x.Email)
+                                      .ToListAsync()
         });
     }
 
@@ -90,9 +106,19 @@ public class WorkspaceController : Controller
             TempData["Error"] = "Country name and code are required.";
             return RedirectToAction(nameof(Index));
         }
-        if (await _db.Countries.AnyAsync(x => x.Code == code))
+        var existingCountry = await _db.Countries.FirstOrDefaultAsync(x => x.Code == code);
+        if (existingCountry != null)
         {
-            TempData["Error"] = "That country code already exists.";
+            if (existingCountry.IsActive)
+            {
+                TempData["Error"] = "That country code already exists.";
+                return RedirectToAction(nameof(Index));
+            }
+            existingCountry.Name = name;
+            existingCountry.IsActive = true;
+            await _db.SaveChangesAsync();
+            await _audit.WriteAsync(HttpContext, "Restore", "Country", existingCountry.Id, $"{existingCountry.Code} - {existingCountry.Name}");
+            TempData["Success"] = $"Country \"{existingCountry.Name}\" restored.";
             return RedirectToAction(nameof(Index));
         }
 
@@ -101,6 +127,31 @@ public class WorkspaceController : Controller
         await _db.SaveChangesAsync();
         await _audit.WriteAsync(HttpContext, "Create", "Country", country.Id, $"{country.Code} - {country.Name}");
         TempData["Success"] = $"Country \"{country.Name}\" added.";
+        return RedirectToAction(nameof(Index));
+    }
+
+
+    [RequirePermission("Projects.Manage")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteCountry(int id)
+    {
+        var country = await _db.Countries.FirstOrDefaultAsync(x => x.Id == id && x.IsActive);
+        if (country == null) return NotFound();
+
+        var activeProjects = await _db.ProjectWorkspaces
+            .Where(x => x.CountryId == id && x.Project!.IsActive)
+            .CountAsync();
+        if (activeProjects > 0)
+        {
+            TempData["Error"] = $"{country.Name} cannot be deleted while it has {activeProjects} active project(s). Move or deactivate those projects first.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        country.IsActive = false;
+        await _db.SaveChangesAsync();
+        await _audit.WriteAsync(HttpContext, "SoftDelete", "Country", country.Id, $"{country.Code} - {country.Name}");
+        TempData["Success"] = $"Country \"{country.Name}\" removed.";
         return RedirectToAction(nameof(Index));
     }
 

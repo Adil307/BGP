@@ -25,7 +25,7 @@ public class InventoryController : Controller
     [RequirePermission("Inventory.View")]
     public async Task<IActionResult> Index(string? q)
     {
-        var query = _db.StockItems.AsNoTracking().Include(x => x.StockCategory).Include(x => x.Unit).Include(x => x.Currency).Include(x => x.Balances).AsQueryable();
+        var query = _db.StockItems.AsNoTracking().Include(x => x.StockCategory).Include(x => x.Unit).Include(x => x.Currency).Include(x => x.Balances).Where(x => x.IsActive).AsQueryable();
         if (!string.IsNullOrWhiteSpace(q)) query = query.Where(x => x.ItemCode.Contains(q) || x.Name.Contains(q) || x.StockCategory!.Name.Contains(q));
         var items = await query.OrderBy(x => x.Name).ToListAsync();
         var rows = items.Select(x => new StockItemRowVm
@@ -36,7 +36,7 @@ public class InventoryController : Controller
         }).ToList();
         return View(new InventoryDashboardVm
         {
-            Items = rows, TotalItems = rows.Count(x => x.IsActive), LowStock = rows.Count(x => x.QuantityOnHand > 0 && x.QuantityOnHand <= x.ReorderLevel),
+            Items = rows, TotalItems = rows.Count, LowStock = rows.Count(x => x.QuantityOnHand > 0 && x.QuantityOnHand <= x.ReorderLevel),
             OutOfStock = rows.Count(x => x.QuantityOnHand <= 0), Warehouses = await _db.Warehouses.CountAsync(x => x.IsActive)
         });
     }
@@ -137,7 +137,7 @@ public class InventoryController : Controller
     }
 
     [RequirePermission("Inventory.Receive")]
-    [HttpGet] public async Task<IActionResult> Receive() => View("TransactionForm", await NewTransactionVm(StockTransactionType.Receive));
+    [HttpGet] public async Task<IActionResult> Receive(int? itemId) => View("TransactionForm", await NewTransactionVm(StockTransactionType.Receive, itemId));
     [RequirePermission("Inventory.Issue")]
     [HttpGet] public async Task<IActionResult> Issue() => View("TransactionForm", await NewTransactionVm(StockTransactionType.Issue));
     [RequirePermission("Inventory.Adjust")]
@@ -164,7 +164,7 @@ public class InventoryController : Controller
             _userManager.GetUserId(User)!, vm.JobId, vm.ContractorId, vm.ReferenceNo?.Trim(), vm.Notes?.Trim());
         if (!result.Ok) { ModelState.AddModelError(string.Empty, result.Message); await FillTransactionLists(vm); return View("TransactionForm", vm); }
         await _audit.WriteAsync(HttpContext, vm.Type.ToString(), "StockTransaction", null, $"Item {vm.StockItemId}; Qty {vm.Quantity}");
-        TempData["Success"] = result.Message; return RedirectToAction(nameof(Transactions));
+        TempData["Success"] = result.Message; return vm.Type == StockTransactionType.Receive ? RedirectToAction(nameof(Index)) : RedirectToAction(nameof(Transactions));
     }
 
     [RequirePermission("Inventory.Export")]
@@ -188,11 +188,25 @@ public class InventoryController : Controller
         vm.Units = await _db.Units.Where(x => x.IsActive).OrderBy(x => x.Name).Select(x => new SelectListItem($"{x.Code} - {x.Name}", x.Id.ToString())).ToListAsync();
         vm.Currencies = await _db.Currencies.Where(x => x.IsActive).OrderBy(x => x.Code).Select(x => new SelectListItem(x.Code, x.Id.ToString())).ToListAsync();
     }
-    private async Task<StockTransactionFormVm> NewTransactionVm(StockTransactionType type)
+    private async Task<StockTransactionFormVm> NewTransactionVm(StockTransactionType type, int? itemId = null)
     {
-        var vm = new StockTransactionFormVm { Type = type, Quantity = 1 };
-        var qar = await _db.Currencies.FirstOrDefaultAsync(x => x.Code == "QAR"); if (qar != null) vm.CurrencyId = qar.Id;
-        await FillTransactionLists(vm); return vm;
+        var vm = new StockTransactionFormVm { Type = type, Quantity = 1, StockItemId = itemId ?? 0 };
+        if (itemId.HasValue)
+        {
+            var item = await _db.StockItems.AsNoTracking().FirstOrDefaultAsync(x => x.Id == itemId.Value && x.IsActive);
+            if (item != null)
+            {
+                vm.UnitCost = item.UnitCost;
+                vm.CurrencyId = item.CurrencyId;
+            }
+        }
+        if (vm.CurrencyId <= 0)
+        {
+            var qar = await _db.Currencies.AsNoTracking().FirstOrDefaultAsync(x => x.Code == "QAR");
+            if (qar != null) vm.CurrencyId = qar.Id;
+        }
+        await FillTransactionLists(vm);
+        return vm;
     }
     private async Task FillTransactionLists(StockTransactionFormVm vm)
     {

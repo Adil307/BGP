@@ -1,46 +1,88 @@
 @model SheetDetailsVm
 @inject IPermissionService PermissionService
 @{
-    ViewData["Title"] = Model.Sheet.Name;
+    var displaySheetName = Model.Sheet.Name == "Requisition" ? "Service Requisition"
+        : Model.Sheet.Name == "Service Approval" ? "Manager Approval"
+        : Model.Sheet.Name == "Service Business" ? "Job Creation"
+        : Model.Sheet.Name == "Service Logistics" ? "Logistics & Return"
+        : Model.Sheet.Name == "Invoice Reception" ? "Invoice & Payment"
+        : Model.Sheet.Name;
+    ViewData["Title"] = displaySheetName;
     var canManage = await PermissionService.HasPermissionAsync(User, "Sheets.Manage");
     var backUrl = Model.Sheet.ProjectId.HasValue
         ? Url.Action("Project", "Workspace", new { id = Model.Sheet.ProjectId.Value }) ?? "/Workspace"
         : Url.Action("Index", "Sheets", new { departmentId = Model.Sheet.DepartmentId }) ?? "/Sheets";
+    var isServiceBusiness = Model.Sheet.Name.Equals("Service Business", StringComparison.OrdinalIgnoreCase);
+    var isServiceApproval = Model.Sheet.Name.Equals("Service Approval", StringComparison.OrdinalIgnoreCase);
+    var canApprove = User.IsInRole("Project Manager") || User.IsInRole("Department Head") || User.IsInRole("Administrator") || User.IsInRole("Super Admin");
+    var elevatedApprover = User.IsInRole("Administrator") || User.IsInRole("Super Admin");
+    var approvalStatusColumn = Model.Columns.FirstOrDefault(x => x.Name.Equals("Approval Status", StringComparison.OrdinalIgnoreCase));
+    var approverColumn = Model.Columns.FirstOrDefault(x => x.Name.Equals("Approver / Manager", StringComparison.OrdinalIgnoreCase));
+    var addLabel = isServiceBusiness ? "Add Job" : isServiceApproval ? "Submit for Approval" : "Add Row";
+    var workflowOrder = new[] { "Requisition", "Service Approval", "Service Business", "Purchase Order", "Service Logistics", "Invoice Reception" };
 }
 
+<div class="sheet-fullscreen-page">
 <div class="sheet-toolbar-head">
     <div>
         <a class="workspace-back" href="@backUrl"><i class="bi bi-arrow-left"></i> Back</a>
-        <div class="sheet-title-line"><span class="sheet-id-lg">@Model.Sheet.UniqueId</span><h1>@Model.Sheet.Name</h1></div>
+        <div class="sheet-title-line"><span class="sheet-id-lg">@Model.Sheet.UniqueId</span><h1>@displaySheetName</h1></div>
         <p>@(Model.Sheet.Project != null ? $"Project: {Model.Sheet.Project.Name}" : Model.Sheet.Department != null ? $"Department: {Model.Sheet.Department.Name}" : "General sheet")</p>
     </div>
     <div class="page-actions">
         @if (canManage)
         {
-            <a class="btn btn-primary" asp-action="AddRow" asp-route-sheetId="@Model.Sheet.Id"><i class="bi bi-plus-lg"></i> Add Row</a>
-            <button class="btn btn-light border" data-bs-toggle="modal" data-bs-target="#addColumnModal"><i class="bi bi-layout-three-columns"></i> Add Column</button>
+            <a class="btn btn-primary" asp-action="AddRow" asp-route-sheetId="@Model.Sheet.Id"><i class="bi bi-plus-lg"></i> @addLabel</a>
         }
     </div>
 </div>
 
+
+@if (Model.WorkflowSheets.Any() && Model.Sheet.ProjectId.HasValue)
+{
+    <nav class="workflow-breadcrumb" aria-label="Service workflow">
+        @for (var i = 0; i < workflowOrder.Length; i++)
+        {
+            var name = workflowOrder[i];
+            var target = Model.WorkflowSheets.FirstOrDefault(x => x.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+            var label = name == "Requisition" ? "Service Requisition" : name == "Service Approval" ? "Manager Approval" : name == "Service Business" ? "Job Creation" : name == "Service Logistics" ? "Logistics & Return" : name == "Invoice Reception" ? "Invoice & Payment" : name;
+            if (target != null)
+            {
+                <a class="workflow-breadcrumb-step @(target.Id == Model.Sheet.Id ? "active" : "")" asp-action="Details" asp-route-id="@target.Id"><span>@(i + 1)</span>@label</a>
+            }
+        }
+    </nav>
+}
+
+@if (isServiceApproval)
+{
+    <div class="workflow-context-card approval-context-card">
+        <div class="workflow-context-icon"><i class="bi bi-person-check-fill"></i></div>
+        <div><strong>Manager Approval</strong><p>Submit the requisition to the responsible PM/manager for a formal business decision. The assigned approver is notified and records an <b>Approve</b> or <b>Reject</b> decision. Job Creation remains locked until approval is granted.</p></div>
+    </div>
+}
+
 <section class="panel mb-3">
     <div class="sheet-utility-row">
         <form method="get" class="sheet-search"><input type="hidden" name="id" value="@Model.Sheet.Id"/><input class="form-control" name="q" value="@Model.Search" placeholder="Search any row value or unique ID..."/><button class="btn btn-outline-primary"><i class="bi bi-search"></i> Search</button>@if(!string.IsNullOrWhiteSpace(Model.Search)){<a class="btn btn-light border" asp-action="Details" asp-route-id="@Model.Sheet.Id">Clear</a>}</form>
-        <span class="text-muted small">@Model.Rows.Count row(s) · @Model.Columns.Count custom column(s)</span>
+        <span class="text-muted small">@Model.Rows.Count record(s) · @Model.Columns.Count column(s)</span>
     </div>
 </section>
 
 <section class="panel p-0 overflow-hidden">
     <div class="dynamic-sheet-wrap">
         <table class="table dynamic-sheet-table mb-0">
-            <thead><tr><th class="sticky-id">Unique ID</th>@foreach(var col in Model.Columns){<th>@col.Name <small>@col.ColumnType</small></th>}<th class="sheet-actions-col">Actions</th></tr></thead>
+            <thead><tr><th class="sticky-id">Unique ID</th>@foreach(var col in Model.Columns){<th>@col.Name <small>@col.ColumnType</small></th>}<th class="sheet-actions-col @(isServiceApproval ? "approval-actions-col" : "")">@(isServiceApproval ? "PM Decision / Actions" : "Actions")</th></tr></thead>
             <tbody>
             @if (!Model.Rows.Any())
             {
-                <tr><td colspan="@(Model.Columns.Count + 2)" class="text-center py-5 text-muted">No rows yet. Use <strong>Add Row</strong> to create the first record.</td></tr>
+                <tr><td colspan="@(Model.Columns.Count + 2)" class="text-center py-5 text-muted">No records yet. Use <strong>@addLabel</strong> to create the first record.</td></tr>
             }
             @foreach (var row in Model.Rows)
             {
+                var approvalStatus = approvalStatusColumn == null ? null : row.Cells.FirstOrDefault(x => x.SheetColumnId == approvalStatusColumn.Id)?.Value;
+                var assignedApprover = approverColumn == null ? null : row.Cells.FirstOrDefault(x => x.SheetColumnId == approverColumn.Id)?.Value;
+                var canApproveThisRow = canApprove && (elevatedApprover || string.IsNullOrWhiteSpace(assignedApprover) || string.Equals(assignedApprover, User.Identity?.Name, StringComparison.OrdinalIgnoreCase));
                 <tr>
                     <td class="sticky-id"><span class="row-id-chip">@row.UniqueId</span></td>
                     @foreach (var col in Model.Columns)
@@ -70,11 +112,32 @@
                             else { @value }
                         </td>
                     }
-                    <td class="sheet-actions-col">
+                    <td class="sheet-actions-col @(isServiceApproval ? "approval-actions-col" : "")">
+                        @if (isServiceApproval && canApproveThisRow && (string.IsNullOrWhiteSpace(approvalStatus) || approvalStatus.Equals("Pending", StringComparison.OrdinalIgnoreCase)))
+                        {
+                            <form asp-action="ApproveService" method="post" class="approval-inline-form">
+                                <input type="hidden" name="id" value="@row.Id"/>
+                                <input class="form-control form-control-sm" name="comment" placeholder="PM / manager decision comment" />
+                                <div class="d-flex gap-1 mt-1">
+                                    <button class="btn btn-sm btn-success" name="approve" value="true"><i class="bi bi-check2"></i> PM Approve</button>
+                                    <button class="btn btn-sm btn-outline-danger" name="approve" value="false"><i class="bi bi-x-lg"></i> Reject</button>
+                                </div>
+                            </form>
+                        }
+                        else if (isServiceApproval && !string.IsNullOrWhiteSpace(approvalStatus))
+                        {
+                            <span class="decision-locked"><i class="bi bi-shield-check"></i> @approvalStatus</span>
+                        }
+                        else if (isServiceApproval && canApprove && !canApproveThisRow && !string.IsNullOrWhiteSpace(assignedApprover))
+                        {
+                            <span class="decision-assigned"><i class="bi bi-person-lock"></i> Assigned to @assignedApprover</span>
+                        }
                         @if (canManage)
                         {
-                            <a class="btn btn-sm btn-outline-primary" asp-action="EditRow" asp-route-id="@row.Id" title="Edit"><i class="bi bi-pencil"></i></a>
-                            <form asp-action="DeleteRow" method="post" class="d-inline" onsubmit="return confirm('Delete this row?');"><input type="hidden" name="id" value="@row.Id"/><button class="btn btn-sm btn-outline-danger" title="Delete"><i class="bi bi-trash"></i></button></form>
+                            <div class="d-flex gap-1 mt-1">
+                                <a class="btn btn-sm btn-outline-primary" asp-action="EditRow" asp-route-id="@row.Id" title="Edit"><i class="bi bi-pencil"></i></a>
+                                <form asp-action="DeleteRow" method="post" class="d-inline" onsubmit="return confirm('Delete this record?');"><input type="hidden" name="id" value="@row.Id"/><button class="btn btn-sm btn-outline-danger" title="Delete"><i class="bi bi-trash"></i></button></form>
+                            </div>
                         }
                     </td>
                 </tr>
@@ -86,44 +149,12 @@
 
 @if (canManage)
 {
-<section class="panel mt-3">
-    <div class="panel-head"><div><h3>Column Management</h3><p>Rename, reorder or remove custom columns. Row Unique ID is system-managed.</p></div></div>
-    <div class="column-manager-list">
-    @foreach (var col in Model.Columns)
-    {
-        <div class="column-manager-row">
-            <form asp-action="RenameColumn" method="post" class="column-rename-form"><input type="hidden" name="id" value="@col.Id"/><span class="column-type-badge">@col.ColumnType</span><input class="form-control form-control-sm" name="name" value="@col.Name"/><button class="btn btn-sm btn-outline-primary">Save</button></form>
-            <div class="column-actions">
-                <form asp-action="MoveColumn" method="post"><input type="hidden" name="id" value="@col.Id"/><input type="hidden" name="direction" value="-1"/><button class="btn btn-sm btn-light border" title="Move left"><i class="bi bi-arrow-left"></i></button></form>
-                <form asp-action="MoveColumn" method="post"><input type="hidden" name="id" value="@col.Id"/><input type="hidden" name="direction" value="1"/><button class="btn btn-sm btn-light border" title="Move right"><i class="bi bi-arrow-right"></i></button></form>
-                <form asp-action="DeleteColumn" method="post" onsubmit="return confirm('Delete this column and all of its cell values?');"><input type="hidden" name="id" value="@col.Id"/><button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button></form>
-            </div>
-        </div>
-    }
-    </div>
-</section>
-
-<section class="panel mt-3">
-    <div class="panel-head"><div><h3>Sheet Settings</h3><p>Rename or remove this sheet from active view.</p></div></div>
+<section class="panel mt-3 sheet-settings-compact">
+    <div class="panel-head"><div><h3>Sheet Settings</h3><p>Column editing is now available from <strong>Column Management</strong> in the sidebar.</p></div></div>
     <div class="sheet-settings-row">
         <form asp-action="Rename" method="post" class="d-flex gap-2 flex-grow-1"><input type="hidden" name="id" value="@Model.Sheet.Id"/><input class="form-control" name="name" value="@Model.Sheet.Name" required/><button class="btn btn-outline-primary">Rename</button></form>
         <form asp-action="Delete" method="post" onsubmit="return confirm('Remove this sheet from active view?');"><input type="hidden" name="id" value="@Model.Sheet.Id"/><button class="btn btn-outline-danger"><i class="bi bi-trash"></i> Remove Sheet</button></form>
     </div>
 </section>
-
-<div class="modal fade" id="addColumnModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0 shadow">
-        <div class="modal-header"><h5 class="modal-title">Add Column</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
-        <form asp-action="AddColumn" method="post">
-            <input type="hidden" name="sheetId" value="@Model.Sheet.Id"/>
-            <div class="modal-body">
-                <div class="mb-3"><label class="form-label">Column Name</label><input class="form-control" name="name" required/></div>
-                <div class="mb-3"><label class="form-label">Column Type</label><select class="form-select" name="columnType">@foreach(var type in Enum.GetValues<SheetColumnType>()){<option value="@type">@type</option>}</select></div>
-                <div class="mb-3"><label class="form-label">Dropdown Options (optional)</label><textarea class="form-control" name="options" rows="2" placeholder="Option 1, Option 2, Option 3"></textarea><small class="text-muted">Used for Dropdown/Status columns. Separate values with commas.</small></div>
-                <label class="form-check"><input class="form-check-input" type="checkbox" name="isRequired" value="true"/><span class="form-check-label">Required field</span></label>
-            </div>
-            <div class="modal-footer"><button class="btn btn-light border" type="button" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary">Add Column</button></div>
-        </form>
-    </div></div>
-</div>
 }
+</div>

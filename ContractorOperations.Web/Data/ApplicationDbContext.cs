@@ -35,6 +35,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<SheetRow> SheetRows => Set<SheetRow>();
     public DbSet<SheetCell> SheetCells => Set<SheetCell>();
     public DbSet<InventoryRequest> InventoryRequests => Set<InventoryRequest>();
+    public DbSet<WorkflowNotification> WorkflowNotifications => Set<WorkflowNotification>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -49,7 +50,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
         builder.Entity<Warehouse>().HasIndex(x => x.Name).IsUnique();
         builder.Entity<JobSequence>().HasIndex(x => x.Year).IsUnique();
         builder.Entity<Job>().HasIndex(x => x.JobNumber).IsUnique();
-        builder.Entity<Job>().HasIndex(x => x.DeduplicationKey).IsUnique();
+        builder.Entity<Job>().HasIndex(x => x.DeduplicationKey).IsUnique().HasFilter("[IsDeleted] = 0");
         builder.Entity<JobLine>().HasIndex(x => new { x.JobId, x.Description, x.UnitId, x.CurrencyId, x.Quantity, x.UnitRate }).IsUnique();
         builder.Entity<Job>().HasQueryFilter(x => !x.IsDeleted);
         // JobLine is the required dependent of Job. Apply the same soft-delete
@@ -73,6 +74,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
         builder.Entity<SheetRow>().HasIndex(x => x.UniqueId).IsUnique();
         builder.Entity<SheetCell>().HasIndex(x => new { x.SheetRowId, x.SheetColumnId }).IsUnique();
         builder.Entity<InventoryRequest>().HasIndex(x => x.RequestNumber).IsUnique();
+        builder.Entity<WorkflowNotification>().HasIndex(x => new { x.UserId, x.IsRead, x.CreatedAt });
 
         builder.Entity<RolePermission>().HasKey(x => new { x.RoleId, x.PermissionId });
         builder.Entity<UserPermission>().HasKey(x => new { x.UserId, x.PermissionId });
@@ -129,6 +131,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
             .HasOne(x => x.RequestedByUser).WithMany().HasForeignKey(x => x.RequestedByUserId).OnDelete(DeleteBehavior.NoAction);
         builder.Entity<InventoryRequest>()
             .HasOne(x => x.ApprovedByUser).WithMany().HasForeignKey(x => x.ApprovedByUserId).OnDelete(DeleteBehavior.NoAction);
+        builder.Entity<WorkflowNotification>()
+            .HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
 
         builder.Entity<JobLine>().Property(x => x.Quantity).HasPrecision(18, 3);
         builder.Entity<JobLine>().Property(x => x.UnitRate).HasPrecision(18, 2);

@@ -1,0 +1,71 @@
+@model ColumnManagementVm
+@{
+    ViewData["Title"] = "Column Management";
+}
+
+<div class="page-heading">
+    <div>
+        <h1>Column Management</h1>
+        <p>Manage columns separately without reducing the working space of job and operational sheets.</p>
+    </div>
+</div>
+
+<section class="panel mb-3">
+    <form method="get" class="d-flex gap-2 align-items-end flex-wrap">
+        <div class="flex-grow-1">
+            <label class="form-label">Select Sheet</label>
+            <select class="form-select" name="sheetId" onchange="this.form.submit()">
+                @foreach (var sheet in Model.Sheets)
+                {
+                    var label = sheet.Project != null ? $"{sheet.Project.Name} · {sheet.Name}" : sheet.Department != null ? $"{sheet.Department.Name} · {sheet.Name}" : sheet.Name;
+                    if (Model.SelectedSheet?.Id == sheet.Id) { <option selected value="@sheet.Id">@label</option> } else { <option value="@sheet.Id">@label</option> }
+                }
+            </select>
+        </div>
+        @if (Model.SelectedSheet != null)
+        {
+            <a class="btn btn-outline-primary" asp-action="Details" asp-route-id="@Model.SelectedSheet.Id"><i class="bi bi-box-arrow-up-right"></i> Open Sheet</a>
+        }
+    </form>
+</section>
+
+@if (Model.SelectedSheet == null)
+{
+    <section class="panel empty-state"><i class="bi bi-layout-three-columns"></i><h3>No sheet available</h3><p>Create a project sheet first.</p></section>
+}
+else
+{
+    <section class="panel mb-3">
+        <div class="panel-head"><div><h3>Add Column</h3><p>@Model.SelectedSheet.Name · Row IDs remain system-managed.</p></div></div>
+        <form asp-action="AddColumn" method="post" class="form-grid-3 align-items-end">
+            <input type="hidden" name="sheetId" value="@Model.SelectedSheet.Id" />
+            <input type="hidden" name="source" value="columns" />
+            <div><label class="form-label">Column Name</label><input class="form-control" name="name" required /></div>
+            <div><label class="form-label">Column Type</label><select class="form-select" name="columnType">@foreach(var type in Enum.GetValues<SheetColumnType>()){<option value="@type">@type</option>}</select></div>
+            <div><label class="form-label">Dropdown / Status Options</label><input class="form-control" name="options" placeholder="Pending, Approved, Rejected" /></div>
+            <div class="form-check mt-2"><input class="form-check-input" id="requiredColumn" type="checkbox" name="isRequired" value="true"/><label class="form-check-label" for="requiredColumn">Required field</label></div>
+            <div><button class="btn btn-primary"><i class="bi bi-plus-lg"></i> Add Column</button></div>
+        </form>
+    </section>
+
+    <section class="panel">
+        <div class="panel-head"><div><h3>@Model.SelectedSheet.Name Columns</h3><p>Rename, reorder or remove columns from this sheet.</p></div></div>
+        <div class="column-manager-list">
+        @foreach (var col in Model.Columns)
+        {
+            <div class="column-manager-row">
+                <form asp-action="RenameColumn" method="post" class="column-rename-form">
+                    <input type="hidden" name="id" value="@col.Id"/><input type="hidden" name="source" value="columns"/>
+                    <span class="column-type-badge">@col.ColumnType</span><input class="form-control form-control-sm" name="name" value="@col.Name"/><button class="btn btn-sm btn-outline-primary">Save</button>
+                </form>
+                <div class="column-actions">
+                    <form asp-action="MoveColumn" method="post"><input type="hidden" name="id" value="@col.Id"/><input type="hidden" name="direction" value="-1"/><input type="hidden" name="source" value="columns"/><button class="btn btn-sm btn-light border" title="Move left"><i class="bi bi-arrow-left"></i></button></form>
+                    <form asp-action="MoveColumn" method="post"><input type="hidden" name="id" value="@col.Id"/><input type="hidden" name="direction" value="1"/><input type="hidden" name="source" value="columns"/><button class="btn btn-sm btn-light border" title="Move right"><i class="bi bi-arrow-right"></i></button></form>
+                    <form asp-action="DeleteColumn" method="post" onsubmit="return confirm('Delete this column and all of its cell values?');"><input type="hidden" name="id" value="@col.Id"/><input type="hidden" name="source" value="columns"/><button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button></form>
+                </div>
+            </div>
+        }
+        @if (!Model.Columns.Any()) { <div class="empty-state py-4"><p>No columns yet.</p></div> }
+        </div>
+    </section>
+}
