@@ -1,6 +1,7 @@
 @model SheetRowFormVm
 @{
     var editing = Model.Row != null;
+    var isRequisition = Model.Sheet.Name.Equals("Requisition", StringComparison.OrdinalIgnoreCase);
     var isServiceBusiness = Model.Sheet.Name.Equals("Service Business", StringComparison.OrdinalIgnoreCase);
     var isServiceApproval = Model.Sheet.Name.Equals("Service Approval", StringComparison.OrdinalIgnoreCase);
     var displaySheetName = Model.Sheet.Name == "Requisition" ? "Service Requisition"
@@ -9,13 +10,15 @@
         : Model.Sheet.Name == "Service Logistics" ? "Logistics & Return"
         : Model.Sheet.Name == "Invoice Reception" ? "Invoice & Payment"
         : Model.Sheet.Name;
-    var addLabel = isServiceBusiness ? "Add Job" : isServiceApproval ? "Submit for Approval" : "Add Job";
+    var requisitionNoColumn = Model.Columns.FirstOrDefault(x => x.Name.Equals("Requisition No", StringComparison.OrdinalIgnoreCase));
+    var activeRequisitionNo = requisitionNoColumn != null && Model.Values.TryGetValue(requisitionNoColumn.Id, out var reqNoValue) ? reqNoValue : null;
+    var addingRequisitionItem = isRequisition && !editing && !string.IsNullOrWhiteSpace(activeRequisitionNo);
+    var addLabel = isRequisition ? (addingRequisitionItem ? "Add Item" : "Add Req") : isServiceBusiness ? "Add Job" : isServiceApproval ? "Submit for Approval" : "Add Job";
     ViewData["Title"] = editing ? $"Edit {Model.Row!.UniqueId}" : $"{addLabel} - {displaySheetName}";
     var localAbroadCol = Model.Columns.FirstOrDefault(x => x.Name.Equals("Local/Abroad", StringComparison.OrdinalIgnoreCase));
     var logisticsModeCol = Model.Sheet.Name.Equals("Service Logistics", StringComparison.OrdinalIgnoreCase) ? Model.Columns.FirstOrDefault(x => x.Name.Equals("Mode", StringComparison.OrdinalIgnoreCase)) : null;
     var exportJobCol = Model.Columns.FirstOrDefault(x => x.Name.Equals("Export Job No", StringComparison.OrdinalIgnoreCase));
     var importJobCol = Model.Columns.FirstOrDefault(x => x.Name.Equals("Import Job No", StringComparison.OrdinalIgnoreCase));
-    var isRequisition = Model.Sheet.Name.Equals("Requisition", StringComparison.OrdinalIgnoreCase);
     var isPurchaseOrder = Model.Sheet.Name.Equals("Purchase Order", StringComparison.OrdinalIgnoreCase);
     var isServiceLogistics = Model.Sheet.Name.Equals("Service Logistics", StringComparison.OrdinalIgnoreCase);
     var isInvoiceReception = Model.Sheet.Name.Equals("Invoice Reception", StringComparison.OrdinalIgnoreCase);
@@ -39,11 +42,11 @@
     }
     else if (isRequisition)
     {
-        <div class="workflow-form-notice"><i class="bi bi-file-earmark-text"></i><div><strong>Step 1 · Requisition</strong><span>Record the service requirement, quantity and required date. The next step is Manager Approval.</span></div></div>
+        <div class="workflow-form-notice"><i class="bi bi-file-earmark-text"></i><div><strong>Step 1 · @(addingRequisitionItem ? $"Add item to {activeRequisitionNo}" : "New requisition")</strong><span>@(addingRequisitionItem ? "This line will stay under the same requisition number and department. Item No is assigned automatically." : "Choose the request department and enter the first item. The system creates a new department-wise requisition number; use Add Item afterwards for more lines under the same requisition.")</span></div></div>
     }
     else if (isServiceBusiness)
     {
-        <div class="workflow-form-notice"><i class="bi bi-briefcase-fill"></i><div><strong>Step 3 · Job Creation</strong><span>A valid requisition and an approved Manager Approval record are required before a job can be created.</span></div></div>
+        <div class="workflow-form-notice"><i class="bi bi-briefcase-fill"></i><div><strong>Step 3 · Job Creation</strong><span>Select the approved requisition and its Manager Approval. On save, every requisition line item is copied automatically into the service job under one shared Job Number.</span></div></div>
     }
     else if (isPurchaseOrder)
     {
@@ -107,14 +110,24 @@
                 }
                 else if (col.Options == "__DEPARTMENTS__")
                 {
-                    <select id="@fieldId" class="form-select" name="@fieldName">
-                        <option value="">-- Select department --</option>
-                        @foreach (var department in Model.Departments)
-                        {
-                            if (department.Code == value) { <option selected value="@department.Code">@department.Code - @department.Name</option> }
-                            else { <option value="@department.Code">@department.Code - @department.Name</option> }
-                        }
-                    </select>
+                    @if (addingRequisitionItem && col.Name.Equals("Request Department", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var lockedDepartment = Model.Departments.FirstOrDefault(x => string.Equals(x.Code, value, StringComparison.OrdinalIgnoreCase));
+                        <input id="@fieldId" class="form-control" value="@(lockedDepartment == null ? value : $"{lockedDepartment.Code} - {lockedDepartment.Name}")" readonly />
+                        <input type="hidden" name="@fieldName" value="@value" />
+                        <small class="text-muted">Department is locked to this requisition.</small>
+                    }
+                    else
+                    {
+                        <select id="@fieldId" class="form-select" name="@fieldName">
+                            <option value="">-- Select department --</option>
+                            @foreach (var department in Model.Departments)
+                            {
+                                if (department.Code == value) { <option selected value="@department.Code">@department.Code - @department.Name</option> }
+                                else { <option value="@department.Code">@department.Code - @department.Name</option> }
+                            }
+                        </select>
+                    }
                 }
                 else if (col.Options == "__CURRENCIES__")
                 {

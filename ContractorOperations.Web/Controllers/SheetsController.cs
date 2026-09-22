@@ -70,7 +70,8 @@ public class SheetsController : Controller
             rowsQuery = rowsQuery.Where(x => x.UniqueId.Contains(search) || x.Cells.Any(c => c.Value != null && c.Value.Contains(search)));
         }
 
-        var rows = await rowsQuery.OrderByDescending(x => x.CreatedAt).Take(500).ToListAsync();
+        var rowLimit = string.Equals(sheet.Name, "Requisition", StringComparison.OrdinalIgnoreCase) || string.Equals(sheet.Name, "Service Business", StringComparison.OrdinalIgnoreCase) ? 5000 : 500;
+        var rows = await rowsQuery.OrderByDescending(x => x.CreatedAt).Take(rowLimit).ToListAsync();
         if (string.Equals(sheet.Name, "Contract Summary", StringComparison.OrdinalIgnoreCase))
             await ApplyContractSummaryComputedValuesAsync(sheet, columns, rows);
 
@@ -284,10 +285,22 @@ public class SheetsController : Controller
 
     [RequirePermission("Sheets.Manage")]
     [HttpGet]
-    public async Task<IActionResult> AddRow(int sheetId)
+    public async Task<IActionResult> AddRow(int sheetId, string? requisitionNo = null)
     {
         var vm = await BuildRowVm(sheetId, null);
-        return vm == null ? NotFound() : View("RowForm", vm);
+        if (vm == null) return NotFound();
+
+        if (string.Equals(vm.Sheet.Name, "Requisition", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(requisitionNo))
+        {
+            var prepared = await PrefillExistingRequisitionAsync(vm, requisitionNo);
+            if (!prepared)
+            {
+                TempData["Error"] = $"Requisition {requisitionNo} is not open for new items.";
+                return RedirectToAction(nameof(Details), new { id = sheetId, q = requisitionNo });
+            }
+        }
+
+        return View("RowForm", vm);
     }
 
     [RequirePermission("Sheets.Manage")]
@@ -325,6 +338,20 @@ public class SheetsController : Controller
         if (!ModelState.IsValid)
             return View("RowForm", await BuildRowVmWithValuesAsync(sheet, null, columns, submittedValues));
 
+        if (string.Equals(sheet.Name, "Service Business", StringComparison.OrdinalIgnoreCase))
+        {
+            var creation = await CreateServiceJobFromRequisitionAsync(sheet, columns, submittedValues);
+            if (!creation.Success)
+            {
+                ModelState.AddModelError(string.Empty, creation.Error ?? "The service job could not be created.");
+                return View("RowForm", await BuildRowVmWithValuesAsync(sheet, null, columns, submittedValues));
+            }
+
+            await _audit.WriteAsync(HttpContext, "CreateJobFromRequisition", "ServiceJob", creation.JobNumber ?? string.Empty, $"{creation.JobNumber} from {creation.RequisitionNo} with {creation.ItemCount} item(s)");
+            TempData["Success"] = $"Job {creation.JobNumber} created from requisition {creation.RequisitionNo}. All {creation.ItemCount} requisition item(s) were added automatically under the same job number.";
+            return RedirectToAction(nameof(Details), new { id = sheetId, q = creation.JobNumber });
+        }
+
         await ApplyGeneratedValuesForNewRowAsync(sheet, columns, submittedValues);
 
         var row = new SheetRow { ProjectSheetId = sheetId, UniqueId = await _ids.NextAsync("ROW") };
@@ -344,8 +371,11 @@ public class SheetsController : Controller
         if (string.Equals(sheet.Name, "Service Approval", StringComparison.OrdinalIgnoreCase))
             await NotifyServiceApprovalSubmittedAsync(sheet, columns, submittedValues, row.Id);
         await _audit.WriteAsync(HttpContext, "AddRow", "SheetRow", row.Id, $"{row.UniqueId} in {sheet.UniqueId}");
-        TempData["Success"] = string.Equals(sheet.Name, "Service Business", StringComparison.OrdinalIgnoreCase)
-            ? $"Job created successfully ({row.UniqueId})."
+        var createdRequisition = string.Equals(sheet.Name, "Requisition", StringComparison.OrdinalIgnoreCase)
+            ? GetValue(submittedValues, FindColumn(columns, "Requisition No"))
+            : null;
+        TempData["Success"] = string.Equals(sheet.Name, "Requisition", StringComparison.OrdinalIgnoreCase)
+            ? $"Item added to requisition {createdRequisition}. Use Add Item for more lines under the same requisition, then complete the requisition when all items are entered."
             : $"Row {row.UniqueId} added.";
         return RedirectToAction(nameof(Details), new { id = sheetId });
     }
@@ -476,10 +506,12 @@ public class SheetsController : Controller
         SetCellValue(row, FindColumn(columns, "Approved By"), User.Identity?.Name);
         SetCellValue(row, FindColumn(columns, "Decision Date"), DateTime.Today.ToString("yyyy-MM-dd"));
         row.UpdatedAt = DateTime.UtcNow;
-        await _db.SaveChangesAsync();
 
         var requester = GetCellValue(row, FindColumn(columns, "Requested By"));
         var requisition = GetCellValue(row, FindColumn(columns, "Requisition No"));
+        if (sheet.ProjectId.HasValue && !string.IsNullOrWhiteSpace(requisition))
+            await SetRequisitionStatusAsync(sheet.ProjectId.Value, requisition, approve ? "Approved" : "Rejected");
+        await _db.SaveChangesAsync();
         if (!string.IsNullOrWhiteSpace(requester))
         {
             var user = await _userManager.FindByEmailAsync(requester) ?? await _userManager.FindByNameAsync(requester);
@@ -511,6 +543,57 @@ public class SheetsController : Controller
         return RedirectToAction(nameof(Details), new { id = sheetId });
     }
 
+    [RequirePermission("Sheets.Manage")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CompleteRequisition(int sheetId, string requisitionNo)
+    {
+        var sheet = await _db.ProjectSheets.Include(x => x.Project).FirstOrDefaultAsync(x => x.Id == sheetId && x.IsActive);
+        if (sheet == null) return NotFound();
+        if (!string.Equals(sheet.Name, "Requisition", StringComparison.OrdinalIgnoreCase)) return BadRequest();
+        if (!await CanAccessDepartmentAsync(sheet.DepartmentId)) return Forbid();
+
+        requisitionNo = (requisitionNo ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(requisitionNo))
+        {
+            TempData["Error"] = "Requisition number is required.";
+            return RedirectToAction(nameof(Details), new { id = sheetId });
+        }
+
+        var columns = await _db.SheetColumns.Where(x => x.ProjectSheetId == sheetId).ToListAsync();
+        var requisitionColumn = FindColumn(columns, "Requisition No");
+        var statusColumn = FindColumn(columns, "Status");
+        if (requisitionColumn == null || statusColumn == null)
+        {
+            TempData["Error"] = "Requisition columns are not configured correctly.";
+            return RedirectToAction(nameof(Details), new { id = sheetId });
+        }
+
+        var upper = requisitionNo.ToUpperInvariant();
+        var rowIds = await _db.SheetCells.AsNoTracking()
+            .Where(x => x.SheetColumnId == requisitionColumn.Id && x.Value != null && x.Value.ToUpper() == upper)
+            .Select(x => x.SheetRowId)
+            .ToListAsync();
+        var rows = await _db.SheetRows.Include(x => x.Cells)
+            .Where(x => x.ProjectSheetId == sheetId && rowIds.Contains(x.Id))
+            .ToListAsync();
+        if (rows.Count == 0)
+        {
+            TempData["Error"] = $"Requisition {requisitionNo} was not found.";
+            return RedirectToAction(nameof(Details), new { id = sheetId });
+        }
+
+        foreach (var row in rows)
+        {
+            SetCellValue(row, statusColumn, "Submitted");
+            row.UpdatedAt = DateTime.UtcNow;
+        }
+        await _db.SaveChangesAsync();
+        await _audit.WriteAsync(HttpContext, "Complete", "Requisition", requisitionNo, $"{requisitionNo} submitted with {rows.Count} item(s)");
+        TempData["Success"] = $"Requisition {requisitionNo} completed with {rows.Count} item(s) and is ready for Manager Approval. Use Add Req to start the next requisition for this department.";
+        return RedirectToAction(nameof(Details), new { id = sheetId, q = requisitionNo });
+    }
+
     private async Task<SheetRowFormVm?> BuildRowVm(int sheetId, SheetRow? row)
     {
         var sheet = await _db.ProjectSheets.AsNoTracking().Include(x => x.Project).Include(x => x.Department).FirstOrDefaultAsync(x => x.Id == sheetId && x.IsActive);
@@ -537,6 +620,143 @@ public class SheetsController : Controller
         };
     }
 
+    private async Task<bool> PrefillExistingRequisitionAsync(SheetRowFormVm vm, string requisitionNo)
+    {
+        var reqColumn = FindColumn(vm.Columns, "Requisition No");
+        var departmentColumn = FindColumn(vm.Columns, "Request Department");
+        var statusColumn = FindColumn(vm.Columns, "Status");
+        if (reqColumn == null || departmentColumn == null || statusColumn == null) return false;
+
+        var upper = requisitionNo.Trim().ToUpperInvariant();
+        var sourceRow = await _db.SheetRows.AsNoTracking().Include(x => x.Cells)
+            .Where(x => x.ProjectSheetId == vm.Sheet.Id
+                        && x.Cells.Any(c => c.SheetColumnId == reqColumn.Id && c.Value != null && c.Value.ToUpper() == upper))
+            .OrderBy(x => x.Id)
+            .FirstOrDefaultAsync();
+        if (sourceRow == null) return false;
+
+        var status = GetCellValue(sourceRow, statusColumn);
+        if (!string.IsNullOrWhiteSpace(status) && !string.Equals(status, "Pending", StringComparison.OrdinalIgnoreCase) && !string.Equals(status, "Draft", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        vm.Values[reqColumn.Id] = GetCellValue(sourceRow, reqColumn);
+        vm.Values[departmentColumn.Id] = GetCellValue(sourceRow, departmentColumn);
+
+        foreach (var name in new[] { "Requested By", "Request Date" })
+        {
+            var column = FindColumn(vm.Columns, name);
+            if (column != null)
+                vm.Values[column.Id] = GetCellValue(sourceRow, column);
+        }
+        return true;
+    }
+
+    private async Task<(bool Success, string? Error, string? JobNumber, string? RequisitionNo, int ItemCount)> CreateServiceJobFromRequisitionAsync(
+        ProjectSheet serviceSheet,
+        List<SheetColumn> serviceColumns,
+        Dictionary<int, string?> submittedValues)
+    {
+        if (!serviceSheet.ProjectId.HasValue)
+            return (false, "The service job must belong to a project.", null, null, 0);
+
+        var requisitionColumn = FindColumn(serviceColumns, "Requisition No.") ?? FindColumn(serviceColumns, "Requisition No");
+        var requisitionNo = GetValue(submittedValues, requisitionColumn);
+        if (string.IsNullOrWhiteSpace(requisitionNo))
+            return (false, "Select an approved requisition before creating the job.", null, null, 0);
+
+        var requisitionSheet = await _db.ProjectSheets.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.ProjectId == serviceSheet.ProjectId.Value && x.IsActive && x.Name == "Requisition");
+        if (requisitionSheet == null)
+            return (false, "The Requisition sheet was not found for this project.", null, requisitionNo, 0);
+
+        var reqColumns = await _db.SheetColumns.AsNoTracking()
+            .Where(x => x.ProjectSheetId == requisitionSheet.Id).ToListAsync();
+        var reqNoColumn = FindColumn(reqColumns, "Requisition No");
+        var reqStatusColumn = FindColumn(reqColumns, "Status");
+        var reqDepartmentColumn = FindColumn(reqColumns, "Request Department");
+        var reqItemColumn = FindColumn(reqColumns, "Item No");
+        var reqDescriptionColumn = FindColumn(reqColumns, "Description");
+        var reqUnitColumn = FindColumn(reqColumns, "Unit");
+        var reqQtyColumn = FindColumn(reqColumns, "Qty");
+        if (reqNoColumn == null || reqStatusColumn == null || reqDepartmentColumn == null)
+            return (false, "The requisition sheet is missing required workflow columns.", null, requisitionNo, 0);
+
+        var upper = requisitionNo.ToUpperInvariant();
+        var reqRows = await _db.SheetRows.AsNoTracking().Include(x => x.Cells)
+            .Where(x => x.ProjectSheetId == requisitionSheet.Id
+                        && x.Cells.Any(c => c.SheetColumnId == reqNoColumn.Id && c.Value != null && c.Value.ToUpper() == upper))
+            .ToListAsync();
+        if (reqRows.Count == 0)
+            return (false, $"Requisition {requisitionNo} has no line items.", null, requisitionNo, 0);
+        if (reqRows.Any(x => !string.Equals(GetCellValue(x, reqStatusColumn), "Approved", StringComparison.OrdinalIgnoreCase)))
+            return (false, $"Requisition {requisitionNo} must be approved before Job Creation.", null, requisitionNo, reqRows.Count);
+
+        var departmentCode = GetCellValue(reqRows[0], reqDepartmentColumn);
+        if (string.IsNullOrWhiteSpace(departmentCode))
+            return (false, $"Requisition {requisitionNo} does not have a request department.", null, requisitionNo, reqRows.Count);
+
+        var jobNumber = await _jobNumbers.NextAsync(departmentCode);
+        var jobNumberColumn = FindColumn(serviceColumns, "Job Number");
+        var serviceDepartmentColumn = FindColumn(serviceColumns, "Request Department");
+        var serviceItemColumn = FindColumn(serviceColumns, "Item No");
+        var serviceDescriptionColumn = FindColumn(serviceColumns, "Service Description");
+        var serviceUnitColumn = FindColumn(serviceColumns, "Unit");
+        var serviceQtyColumn = FindColumn(serviceColumns, "Qty");
+        var serviceInvoiceColumn = FindColumn(serviceColumns, "Invoice Number");
+        var serviceInvoiceAmountColumn = FindColumn(serviceColumns, "Invoice Amount");
+        var serviceInvoiceCurrencyColumn = FindColumn(serviceColumns, "Invoice Currency");
+        var serviceExchangeColumn = FindColumn(serviceColumns, "Exchange to USD");
+
+        var orderedRows = reqRows
+            .OrderBy(x => int.TryParse(GetCellValue(x, reqItemColumn), out var itemNo) ? itemNo : int.MaxValue)
+            .ThenBy(x => x.Id)
+            .ToList();
+
+        for (var index = 0; index < orderedRows.Count; index++)
+        {
+            var reqRow = orderedRows[index];
+            var rowValues = new Dictionary<int, string?>(submittedValues);
+            void Set(SheetColumn? column, string? value)
+            {
+                if (column != null) rowValues[column.Id] = value;
+            }
+
+            Set(jobNumberColumn, jobNumber);
+            Set(requisitionColumn, requisitionNo);
+            Set(serviceDepartmentColumn, departmentCode);
+            Set(serviceItemColumn, GetCellValue(reqRow, reqItemColumn));
+            Set(serviceDescriptionColumn, GetCellValue(reqRow, reqDescriptionColumn));
+            Set(serviceUnitColumn, GetCellValue(reqRow, reqUnitColumn));
+            Set(serviceQtyColumn, GetCellValue(reqRow, reqQtyColumn));
+            if (index > 0)
+            {
+                Set(serviceInvoiceColumn, null);
+                Set(serviceInvoiceAmountColumn, null);
+                Set(serviceInvoiceCurrencyColumn, null);
+                Set(serviceExchangeColumn, null);
+            }
+
+            var newRow = new SheetRow
+            {
+                ProjectSheetId = serviceSheet.Id,
+                UniqueId = await _ids.NextAsync("ROW")
+            };
+            foreach (var column in serviceColumns)
+            {
+                var value = rowValues.GetValueOrDefault(column.Id)?.Trim();
+                if (column.ColumnType == SheetColumnType.Checkbox && string.IsNullOrWhiteSpace(value)) value = "false";
+                if (!string.IsNullOrWhiteSpace(value))
+                    newRow.Cells.Add(new SheetCell { SheetColumnId = column.Id, Value = value });
+            }
+            _db.SheetRows.Add(newRow);
+        }
+
+        await _db.SaveChangesAsync();
+        await SetRequisitionStatusAsync(serviceSheet.ProjectId.Value, requisitionNo, "Converted to Job");
+        await _db.SaveChangesAsync();
+        return (true, null, jobNumber, requisitionNo, orderedRows.Count);
+    }
+
     private static bool IsSystemManagedColumn(SheetColumn column)
         => !string.IsNullOrWhiteSpace(column.Options) &&
            (column.Options.StartsWith("__AUTO_", StringComparison.OrdinalIgnoreCase) || column.Options.StartsWith("__COMPUTED_", StringComparison.OrdinalIgnoreCase));
@@ -549,7 +769,7 @@ public class SheetsController : Controller
             if (column != null && string.IsNullOrWhiteSpace(values.GetValueOrDefault(column.Id))) values[column.Id] = defaultValue;
         }
 
-        if (string.Equals(sheet.Name, "Requisition", StringComparison.OrdinalIgnoreCase)) SetDefault("Status", "Submitted");
+        if (string.Equals(sheet.Name, "Requisition", StringComparison.OrdinalIgnoreCase)) SetDefault("Status", "Pending");
         if (string.Equals(sheet.Name, "Purchase Order", StringComparison.OrdinalIgnoreCase)) SetDefault("Status", "Draft");
         if (string.Equals(sheet.Name, "Service Logistics", StringComparison.OrdinalIgnoreCase)) SetDefault("Follow-up Status", "Pending");
         if (string.Equals(sheet.Name, "Invoice Reception", StringComparison.OrdinalIgnoreCase)) SetDefault("Payment Status", "Pending");
@@ -588,12 +808,29 @@ public class SheetsController : Controller
 
     private async Task ApplyGeneratedValuesForNewRowAsync(ProjectSheet sheet, List<SheetColumn> columns, Dictionary<int, string?> values)
     {
+        if (string.Equals(sheet.Name, "Requisition", StringComparison.OrdinalIgnoreCase))
+        {
+            var requisitionNumber = FindColumn(columns, "Requisition No");
+            var itemNumber = FindColumn(columns, "Item No");
+            var department = FindColumn(columns, "Request Department");
+            var departmentValue = department == null ? null : values.GetValueOrDefault(department.Id)?.Trim();
+
+            if (requisitionNumber != null && string.IsNullOrWhiteSpace(values.GetValueOrDefault(requisitionNumber.Id)) && !string.IsNullOrWhiteSpace(departmentValue))
+                values[requisitionNumber.Id] = await NextRequisitionNumberAsync(sheet, columns, departmentValue);
+
+            var requisitionValue = requisitionNumber == null ? null : values.GetValueOrDefault(requisitionNumber.Id);
+            if (itemNumber != null && string.IsNullOrWhiteSpace(values.GetValueOrDefault(itemNumber.Id)) && !string.IsNullOrWhiteSpace(requisitionValue))
+                values[itemNumber.Id] = (await NextRequisitionItemNumberAsync(sheet, columns, requisitionValue)).ToString(CultureInfo.InvariantCulture);
+        }
+
         foreach (var column in columns.Where(IsSystemManagedColumn))
         {
             if (!string.IsNullOrWhiteSpace(values.GetValueOrDefault(column.Id))) continue;
             values[column.Id] = column.Options switch
             {
-                "__AUTO_REQUISITION_NUMBER__" => await _ids.NextAsync("REQ"),
+                "__AUTO_REQUISITION_NUMBER__" => values.GetValueOrDefault(column.Id),
+                "__AUTO_REQUISITION_ITEM_NO__" => values.GetValueOrDefault(column.Id),
+                "__AUTO_REQUISITION_STATUS__" => "Pending",
                 "__AUTO_SERVICE_APPROVAL_NUMBER__" => await _ids.NextAsync("SAP"),
                 "__AUTO_PO_NUMBER__" => await _ids.NextAsync("PO"),
                 "__AUTO_CURRENT_USER_EMAIL__" => User.Identity?.Name ?? string.Empty,
@@ -603,15 +840,7 @@ public class SheetsController : Controller
             };
         }
 
-        if (string.Equals(sheet.Name, "Service Business", StringComparison.OrdinalIgnoreCase))
-        {
-            var jobNumber = FindColumn(columns, "Job Number");
-            var department = FindColumn(columns, "Request Department");
-            var departmentValue = department == null ? null : values.GetValueOrDefault(department.Id);
-            if (jobNumber != null && string.IsNullOrWhiteSpace(values.GetValueOrDefault(jobNumber.Id)) && !string.IsNullOrWhiteSpace(departmentValue))
-                values[jobNumber.Id] = await _jobNumbers.NextAsync(departmentValue);
-        }
-        else if (string.Equals(sheet.Name, "Import and Export", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(sheet.Name, "Import and Export", StringComparison.OrdinalIgnoreCase))
         {
             var jobNumber = FindColumn(columns, "Job Number");
             var shipmentType = FindColumn(columns, "Shipment type (Import or Export)");
@@ -625,6 +854,81 @@ public class SheetsController : Controller
     {
         if (!columns.Any(x => IsSystemManagedColumn(x) && string.IsNullOrWhiteSpace(values.GetValueOrDefault(x.Id)))) return;
         await ApplyGeneratedValuesForNewRowAsync(sheet, columns, values);
+    }
+
+    private async Task<string> NextRequisitionNumberAsync(ProjectSheet sheet, List<SheetColumn> columns, string departmentCode)
+    {
+        if (!sheet.ProjectId.HasValue) return await _ids.NextAsync("REQ");
+
+        var requisitionColumn = FindColumn(columns, "Requisition No");
+        var normalizedDepartment = departmentCode.Trim().ToUpperInvariant();
+        var department = await _db.Departments.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.IsActive && x.Code.ToUpper() == normalizedDepartment);
+        if (department == null || requisitionColumn == null) return await _ids.NextAsync("REQ");
+
+        var projectCode = sheet.Project?.Code;
+        if (string.IsNullOrWhiteSpace(projectCode))
+            projectCode = await _db.Projects.AsNoTracking().Where(x => x.Id == sheet.ProjectId.Value).Select(x => x.Code).FirstOrDefaultAsync();
+        projectCode = NormalizeBusinessCode(projectCode, "PRJ");
+        var deptCode = NormalizeBusinessCode(department.Code, "DEP");
+        var visiblePrefix = $"{projectCode}-{deptCode}-";
+        var sequenceScope = $"R{sheet.ProjectId.Value:X8}{department.Id:X8}";
+
+        await using var tx = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        var existingNumbers = await (from cell in _db.SheetCells.AsNoTracking()
+                                     join row in _db.SheetRows.AsNoTracking() on cell.SheetRowId equals row.Id
+                                     where row.ProjectSheetId == sheet.Id
+                                           && cell.SheetColumnId == requisitionColumn.Id
+                                           && cell.Value != null
+                                           && cell.Value.StartsWith(visiblePrefix)
+                                     select cell.Value!).ToListAsync();
+
+        var sequence = await _db.BusinessSequences.SingleOrDefaultAsync(x => x.Prefix == sequenceScope && x.Year == 0);
+        if (sequence == null)
+        {
+            var max = existingNumbers
+                .Select(x => x.StartsWith(visiblePrefix, StringComparison.OrdinalIgnoreCase) && int.TryParse(x[visiblePrefix.Length..], out var n) ? n : 0)
+                .DefaultIfEmpty(0)
+                .Max();
+            sequence = new BusinessSequence { Prefix = sequenceScope, Year = 0, LastNumber = max + 1 };
+            _db.BusinessSequences.Add(sequence);
+        }
+        else
+        {
+            sequence.LastNumber++;
+        }
+
+        await _db.SaveChangesAsync();
+        await tx.CommitAsync();
+        return $"{visiblePrefix}{sequence.LastNumber:000}";
+    }
+
+    private async Task<int> NextRequisitionItemNumberAsync(ProjectSheet sheet, List<SheetColumn> columns, string requisitionNo)
+    {
+        var requisitionColumn = FindColumn(columns, "Requisition No");
+        var itemColumn = FindColumn(columns, "Item No");
+        if (requisitionColumn == null || itemColumn == null) return 1;
+
+        var upper = requisitionNo.Trim().ToUpperInvariant();
+        await using var tx = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        var rows = await _db.SheetRows.AsNoTracking().Include(x => x.Cells)
+            .Where(x => x.ProjectSheetId == sheet.Id && x.Cells.Any(c => c.SheetColumnId == requisitionColumn.Id && c.Value != null && c.Value.ToUpper() == upper))
+            .ToListAsync();
+
+        var maxItem = rows
+            .Select(x => GetCellValue(x, itemColumn))
+            .Select(x => int.TryParse(x, out var n) ? n : 0)
+            .DefaultIfEmpty(0)
+            .Max();
+        var next = Math.Max(maxItem, rows.Count) + 1;
+        await tx.CommitAsync();
+        return next;
+    }
+
+    private static string NormalizeBusinessCode(string? value, string fallback)
+    {
+        var normalized = new string((value ?? string.Empty).Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant();
+        return string.IsNullOrWhiteSpace(normalized) ? fallback : normalized;
     }
 
     private async Task<string> NextShipmentJobNumberAsync(ProjectSheet sheet, string shipmentType)
@@ -712,11 +1016,55 @@ public class SheetsController : Controller
             return column == null ? null : values.GetValueOrDefault(column.Id)?.Trim();
         }
 
-        if (string.Equals(sheet.Name, "Service Approval", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(sheet.Name, "Requisition", StringComparison.OrdinalIgnoreCase))
+        {
+            var departmentCode = Value("Request Department");
+            if (string.IsNullOrWhiteSpace(departmentCode) || !await _db.Departments.AsNoTracking().AnyAsync(x => x.IsActive && x.Code.ToUpper() == departmentCode.ToUpper()))
+                ModelState.AddModelError(string.Empty, "Select a valid request department before adding the requisition item.");
+
+            var req = Value("Requisition No");
+            var reqColumn = FindColumn(columns, "Requisition No");
+            var statusColumn = FindColumn(columns, "Status");
+            var departmentColumn = FindColumn(columns, "Request Department");
+            if (reqColumn != null && statusColumn != null && departmentColumn != null)
+            {
+                var allRows = await _db.SheetRows.AsNoTracking().Include(x => x.Cells)
+                    .Where(x => x.ProjectSheetId == sheet.Id).ToListAsync();
+
+                if (string.IsNullOrWhiteSpace(req))
+                {
+                    var openForDepartment = allRows
+                        .Where(x => string.Equals(GetCellValue(x, departmentColumn), departmentCode, StringComparison.OrdinalIgnoreCase))
+                        .Where(x => { var st = GetCellValue(x, statusColumn); return string.IsNullOrWhiteSpace(st) || string.Equals(st, "Pending", StringComparison.OrdinalIgnoreCase) || string.Equals(st, "Draft", StringComparison.OrdinalIgnoreCase); })
+                        .Select(x => GetCellValue(x, reqColumn))
+                        .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
+                    if (!string.IsNullOrWhiteSpace(openForDepartment))
+                        ModelState.AddModelError(string.Empty, $"Department {departmentCode} already has open requisition {openForDepartment}. Use Add Item on that requisition, or complete it before starting the next requisition.");
+                }
+                else
+                {
+                    var existing = allRows.FirstOrDefault(x => string.Equals(GetCellValue(x, reqColumn), req, StringComparison.OrdinalIgnoreCase));
+                    if (existing == null)
+                        ModelState.AddModelError(string.Empty, $"Requisition {req} was not found. Use Add Req to create a new requisition.");
+                    else
+                    {
+                        var existingStatus = GetCellValue(existing, statusColumn);
+                        var existingDepartment = GetCellValue(existing, departmentColumn);
+                        if (!string.Equals(existingStatus, "Pending", StringComparison.OrdinalIgnoreCase) && !string.Equals(existingStatus, "Draft", StringComparison.OrdinalIgnoreCase))
+                            ModelState.AddModelError(string.Empty, $"Requisition {req} is already {existingStatus ?? "closed"} and cannot accept more items.");
+                        if (!string.Equals(existingDepartment, departmentCode, StringComparison.OrdinalIgnoreCase))
+                            ModelState.AddModelError(string.Empty, $"Requisition {req} belongs to department {existingDepartment}; its department cannot be changed.");
+                    }
+                }
+            }
+        }
+        else if (string.Equals(sheet.Name, "Service Approval", StringComparison.OrdinalIgnoreCase))
         {
             var req = Value("Requisition No");
             if (!string.IsNullOrWhiteSpace(req) && !await SheetReferenceExistsAsync(sheet.ProjectId.Value, "Requisition", "Requisition No", req))
                 ModelState.AddModelError(string.Empty, $"Requisition {req} was not found in the Requisition sheet.");
+            else if (!string.IsNullOrWhiteSpace(req) && !await RequisitionReadyForApprovalAsync(sheet.ProjectId.Value, req))
+                ModelState.AddModelError(string.Empty, $"Complete requisition {req} before submitting it for Manager Approval.");
 
             var approver = Value("Approver / Manager");
             if (!string.IsNullOrWhiteSpace(approver))
@@ -731,17 +1079,29 @@ public class SheetsController : Controller
             var req = Value("Requisition No.") ?? Value("Requisition No");
             var approval = Value("Service Approval No");
             if (string.IsNullOrWhiteSpace(req) || !await SheetReferenceExistsAsync(sheet.ProjectId.Value, "Requisition", "Requisition No", req))
-                ModelState.AddModelError(string.Empty, "A valid Requisition No. is required before a job can be created.");
+            {
+                ModelState.AddModelError(string.Empty, "Select a valid approved requisition before creating the job.");
+            }
+            else
+            {
+                var reqStatus = await SheetReferencedValueAsync(sheet.ProjectId.Value, "Requisition", "Requisition No", req, "Status");
+                if (!string.Equals(reqStatus, "Approved", StringComparison.OrdinalIgnoreCase))
+                    ModelState.AddModelError(string.Empty, $"Requisition {req} must be Approved before job creation.");
+
+                if (await SheetReferenceExistsAsync(sheet.ProjectId.Value, "Service Business", "Requisition No.", req))
+                    ModelState.AddModelError(string.Empty, $"A service job has already been created from requisition {req}.");
+            }
+
             if (string.IsNullOrWhiteSpace(approval))
-                ModelState.AddModelError(string.Empty, "An approved Service Approval No is required before a job can be created.");
+                ModelState.AddModelError(string.Empty, "An approved Manager Approval record is required before a job can be created.");
             else
             {
                 var status = await SheetReferencedValueAsync(sheet.ProjectId.Value, "Service Approval", "Service Approval No", approval, "Approval Status");
                 var approvedRequisition = await SheetReferencedValueAsync(sheet.ProjectId.Value, "Service Approval", "Service Approval No", approval, "Requisition No");
                 if (!string.Equals(status, "Approved", StringComparison.OrdinalIgnoreCase))
-                    ModelState.AddModelError(string.Empty, $"Service Approval {approval} must be Approved before job creation.");
+                    ModelState.AddModelError(string.Empty, $"Manager Approval {approval} must be Approved before job creation.");
                 else if (!string.Equals(approvedRequisition?.Trim(), req?.Trim(), StringComparison.OrdinalIgnoreCase))
-                    ModelState.AddModelError(string.Empty, $"Service Approval {approval} does not belong to requisition {req}.");
+                    ModelState.AddModelError(string.Empty, $"Manager Approval {approval} does not belong to requisition {req}.");
             }
         }
         else if (string.Equals(sheet.Name, "Purchase Order", StringComparison.OrdinalIgnoreCase))
@@ -828,7 +1188,11 @@ public class SheetsController : Controller
         var result = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
         if (!sheet.ProjectId.HasValue) return result;
 
-        result["__REQUISITIONS__"] = await GetSheetColumnValuesAsync(sheet.ProjectId.Value, "Requisition", "Requisition No");
+        result["__REQUISITIONS__"] = string.Equals(sheet.Name, "Service Approval", StringComparison.OrdinalIgnoreCase)
+            ? await GetRequisitionNumbersByStatusAsync(sheet.ProjectId.Value, "Submitted")
+            : string.Equals(sheet.Name, "Service Business", StringComparison.OrdinalIgnoreCase)
+                ? await GetRequisitionNumbersByStatusAsync(sheet.ProjectId.Value, "Approved")
+                : await GetCompletedRequisitionNumbersAsync(sheet.ProjectId.Value);
         result["__SERVICE_JOBS__"] = await GetSheetColumnValuesAsync(sheet.ProjectId.Value, "Service Business", "Job Number");
         result["__APPROVED_SERVICE_APPROVALS__"] = await GetApprovedServiceApprovalNumbersAsync(sheet.ProjectId.Value);
         return result;
@@ -847,6 +1211,79 @@ public class SheetsController : Controller
         return await _db.SheetCells.AsNoTracking()
             .Where(x => x.SheetColumnId == columnId.Value && x.Value != null && x.Value != "")
             .Select(x => x.Value!).Distinct().OrderByDescending(x => x).ToListAsync();
+    }
+
+    private async Task<List<string>> GetRequisitionNumbersByStatusAsync(int projectId, params string[] statuses)
+    {
+        var sheet = await _db.ProjectSheets.AsNoTracking().FirstOrDefaultAsync(x => x.ProjectId == projectId && x.IsActive && x.Name == "Requisition");
+        if (sheet == null) return new List<string>();
+        var columns = await _db.SheetColumns.AsNoTracking().Where(x => x.ProjectSheetId == sheet.Id).ToListAsync();
+        var numberColumn = FindColumn(columns, "Requisition No");
+        var statusColumn = FindColumn(columns, "Status");
+        if (numberColumn == null || statusColumn == null) return new List<string>();
+        var allowed = new HashSet<string>(statuses, StringComparer.OrdinalIgnoreCase);
+        var rows = await _db.SheetRows.AsNoTracking().Include(x => x.Cells).Where(x => x.ProjectSheetId == sheet.Id).ToListAsync();
+        return rows
+            .Where(x => allowed.Contains(GetCellValue(x, statusColumn) ?? string.Empty))
+            .Select(x => GetCellValue(x, numberColumn))
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(x => x)
+            .ToList();
+    }
+
+    private async Task<List<string>> GetCompletedRequisitionNumbersAsync(int projectId)
+    {
+        var sheet = await _db.ProjectSheets.AsNoTracking().FirstOrDefaultAsync(x => x.ProjectId == projectId && x.IsActive && x.Name == "Requisition");
+        if (sheet == null) return new List<string>();
+        var columns = await _db.SheetColumns.AsNoTracking().Where(x => x.ProjectSheetId == sheet.Id).ToListAsync();
+        var numberColumn = FindColumn(columns, "Requisition No");
+        var statusColumn = FindColumn(columns, "Status");
+        if (numberColumn == null || statusColumn == null) return new List<string>();
+        var rows = await _db.SheetRows.AsNoTracking().Include(x => x.Cells).Where(x => x.ProjectSheetId == sheet.Id).ToListAsync();
+        return rows
+            .Where(x => IsCompletedRequisitionStatus(GetCellValue(x, statusColumn)))
+            .Select(x => GetCellValue(x, numberColumn))
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(x => x)
+            .ToList();
+    }
+
+    private async Task<bool> RequisitionReadyForApprovalAsync(int projectId, string requisitionNo)
+    {
+        var sheet = await _db.ProjectSheets.AsNoTracking().FirstOrDefaultAsync(x => x.ProjectId == projectId && x.IsActive && x.Name == "Requisition");
+        if (sheet == null) return false;
+        var columns = await _db.SheetColumns.AsNoTracking().Where(x => x.ProjectSheetId == sheet.Id).ToListAsync();
+        var numberColumn = FindColumn(columns, "Requisition No");
+        var statusColumn = FindColumn(columns, "Status");
+        if (numberColumn == null || statusColumn == null) return false;
+        var rows = await _db.SheetRows.AsNoTracking().Include(x => x.Cells).Where(x => x.ProjectSheetId == sheet.Id).ToListAsync();
+        var matching = rows.Where(x => string.Equals(GetCellValue(x, numberColumn), requisitionNo, StringComparison.OrdinalIgnoreCase)).ToList();
+        return matching.Count > 0 && matching.All(x => IsCompletedRequisitionStatus(GetCellValue(x, statusColumn)));
+    }
+
+    private static bool IsCompletedRequisitionStatus(string? status)
+        => string.Equals(status, "Submitted", StringComparison.OrdinalIgnoreCase)
+           || string.Equals(status, "Approved", StringComparison.OrdinalIgnoreCase)
+           || string.Equals(status, "Converted to Job", StringComparison.OrdinalIgnoreCase);
+
+    private async Task SetRequisitionStatusAsync(int projectId, string requisitionNo, string status)
+    {
+        var sheet = await _db.ProjectSheets.FirstOrDefaultAsync(x => x.ProjectId == projectId && x.IsActive && x.Name == "Requisition");
+        if (sheet == null) return;
+        var columns = await _db.SheetColumns.Where(x => x.ProjectSheetId == sheet.Id).ToListAsync();
+        var numberColumn = FindColumn(columns, "Requisition No");
+        var statusColumn = FindColumn(columns, "Status");
+        if (numberColumn == null || statusColumn == null) return;
+        var rows = await _db.SheetRows.Include(x => x.Cells).Where(x => x.ProjectSheetId == sheet.Id).ToListAsync();
+        foreach (var row in rows.Where(x => string.Equals(GetCellValue(x, numberColumn), requisitionNo, StringComparison.OrdinalIgnoreCase)))
+        {
+            SetCellValue(row, statusColumn, status);
+            row.UpdatedAt = DateTime.UtcNow;
+        }
     }
 
     private async Task<List<string>> GetApprovedServiceApprovalNumbersAsync(int projectId)

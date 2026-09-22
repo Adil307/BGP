@@ -12,13 +12,17 @@
     var backUrl = Model.Sheet.ProjectId.HasValue
         ? Url.Action("Project", "Workspace", new { id = Model.Sheet.ProjectId.Value }) ?? "/Workspace"
         : Url.Action("Index", "Sheets", new { departmentId = Model.Sheet.DepartmentId }) ?? "/Sheets";
+    var isRequisition = Model.Sheet.Name.Equals("Requisition", StringComparison.OrdinalIgnoreCase);
     var isServiceBusiness = Model.Sheet.Name.Equals("Service Business", StringComparison.OrdinalIgnoreCase);
     var isServiceApproval = Model.Sheet.Name.Equals("Service Approval", StringComparison.OrdinalIgnoreCase);
     var canApprove = User.IsInRole("Project Manager") || User.IsInRole("Department Head") || User.IsInRole("Administrator") || User.IsInRole("Super Admin");
     var elevatedApprover = User.IsInRole("Administrator") || User.IsInRole("Super Admin");
     var approvalStatusColumn = Model.Columns.FirstOrDefault(x => x.Name.Equals("Approval Status", StringComparison.OrdinalIgnoreCase));
     var approverColumn = Model.Columns.FirstOrDefault(x => x.Name.Equals("Approver / Manager", StringComparison.OrdinalIgnoreCase));
-    var addLabel = isServiceBusiness ? "Add Job" : isServiceApproval ? "Submit for Approval" : "Add Job";
+    var requisitionNumberColumn = Model.Columns.FirstOrDefault(x => x.Name.Equals("Requisition No", StringComparison.OrdinalIgnoreCase));
+    var requisitionStatusColumn = Model.Columns.FirstOrDefault(x => x.Name.Equals("Status", StringComparison.OrdinalIgnoreCase));
+    var renderedRequisitionActions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    var addLabel = isRequisition ? "Add Req" : isServiceBusiness ? "Add Job" : isServiceApproval ? "Submit for Approval" : "Add Job";
     var workflowOrder = new[] { "Requisition", "Service Approval", "Service Business", "Purchase Order", "Service Logistics", "Invoice Reception" };
 }
 
@@ -38,7 +42,7 @@
 </div>
 
 
-@if (Model.WorkflowSheets.Any() && Model.Sheet.ProjectId.HasValue)
+@if (Model.WorkflowSheets.Any() && Model.Sheet.ProjectId.HasValue && workflowOrder.Contains(Model.Sheet.Name, StringComparer.OrdinalIgnoreCase))
 {
     <nav class="workflow-breadcrumb" aria-label="Service workflow">
         @for (var i = 0; i < workflowOrder.Length; i++)
@@ -54,6 +58,13 @@
     </nav>
 }
 
+@if (isRequisition)
+{
+    <div class="workflow-context-card">
+        <div class="workflow-context-icon"><i class="bi bi-list-check"></i></div>
+        <div><strong>One requisition · unlimited line items</strong><p><b>Add Req</b> starts a new department-wise requisition, for example <b>QAT3D-GUN-001</b>. Use <b>Add Item</b> to add Item 1, Item 2, Item 3 and as many lines as required under that same requisition. Complete it only when all items are entered; the next GUN requisition will then be <b>QAT3D-GUN-002</b>.</p></div>
+    </div>
+}
 @if (isServiceApproval)
 {
     <div class="workflow-context-card approval-context-card">
@@ -82,6 +93,11 @@
             {
                 var approvalStatus = approvalStatusColumn == null ? null : row.Cells.FirstOrDefault(x => x.SheetColumnId == approvalStatusColumn.Id)?.Value;
                 var assignedApprover = approverColumn == null ? null : row.Cells.FirstOrDefault(x => x.SheetColumnId == approverColumn.Id)?.Value;
+                var requisitionNo = requisitionNumberColumn == null ? null : row.Cells.FirstOrDefault(x => x.SheetColumnId == requisitionNumberColumn.Id)?.Value;
+                var requisitionStatus = requisitionStatusColumn == null ? null : row.Cells.FirstOrDefault(x => x.SheetColumnId == requisitionStatusColumn.Id)?.Value;
+                var showCompleteRequisition = isRequisition && canManage && !string.IsNullOrWhiteSpace(requisitionNo)
+                    && (string.IsNullOrWhiteSpace(requisitionStatus) || requisitionStatus.Equals("Pending", StringComparison.OrdinalIgnoreCase))
+                    && renderedRequisitionActions.Add(requisitionNo);
                 var canApproveThisRow = canApprove && (elevatedApprover || string.IsNullOrWhiteSpace(assignedApprover) || string.Equals(assignedApprover, User.Identity?.Name, StringComparison.OrdinalIgnoreCase));
                 <tr>
                     <td class="sticky-id"><span class="row-id-chip">@row.UniqueId</span></td>
@@ -131,6 +147,17 @@
                         else if (isServiceApproval && canApprove && !canApproveThisRow && !string.IsNullOrWhiteSpace(assignedApprover))
                         {
                             <span class="decision-assigned"><i class="bi bi-person-lock"></i> Assigned to @assignedApprover</span>
+                        }
+                        @if (showCompleteRequisition)
+                        {
+                            <div class="d-flex flex-wrap gap-1 mb-1">
+                                <a class="btn btn-sm btn-outline-primary" asp-action="AddRow" asp-route-sheetId="@Model.Sheet.Id" asp-route-requisitionNo="@requisitionNo"><i class="bi bi-plus-lg"></i> Add Item</a>
+                                <form asp-action="CompleteRequisition" method="post" class="d-inline" onsubmit="return confirm('Complete this requisition? You will not be able to add more items after completion.');">
+                                    <input type="hidden" name="sheetId" value="@Model.Sheet.Id"/>
+                                    <input type="hidden" name="requisitionNo" value="@requisitionNo"/>
+                                    <button class="btn btn-sm btn-success"><i class="bi bi-check2-circle"></i> Complete Req</button>
+                                </form>
+                            </div>
                         }
                         @if (canManage)
                         {

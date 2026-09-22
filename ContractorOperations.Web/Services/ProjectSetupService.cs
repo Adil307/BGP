@@ -126,13 +126,14 @@ public class ProjectSetupService : IProjectSetupService
         new("Requisition", new List<ColumnTemplate>
         {
             C("Requisition No", options:"__AUTO_REQUISITION_NUMBER__"),
+            C("Item No", SheetColumnType.Number, false, "__AUTO_REQUISITION_ITEM_NO__"),
             C("Requested By", SheetColumnType.Email, false, "__AUTO_CURRENT_USER_EMAIL__"),
             C("Request Department", SheetColumnType.Dropdown, true, "__DEPARTMENTS__"),
             C("Description", required:true),
             C("Unit", required:true),
             C("Qty", SheetColumnType.Number, true),
             C("Required Date", SheetColumnType.Date),
-            C("Status", SheetColumnType.Status, false, "Pending,Submitted,Approved,Rejected,Converted to Job"),
+            C("Status", SheetColumnType.Status, false, "__AUTO_REQUISITION_STATUS__"),
             C("Request Date", SheetColumnType.Date, false, "__AUTO_TODAY__"),
             C("Notes")
         }),
@@ -157,16 +158,19 @@ public class ProjectSetupService : IProjectSetupService
         new("Service Business", new List<ColumnTemplate>
         {
             C("Request Person", required:true),
-            C("Request Department", SheetColumnType.Dropdown, true, "__DEPARTMENTS__"),
+            C("Request Department", SheetColumnType.Dropdown, false, "__COMPUTED_REQUISITION_DEPARTMENT__"),
             C("Person In Charge", required:true),
             C("Job Number", options:"__AUTO_JOB_NUMBER__"),
             C("Requisition No.", SheetColumnType.Dropdown, true, "__REQUISITIONS__"),
             C("Service Approval No", SheetColumnType.Dropdown, true, "__APPROVED_SERVICE_APPROVALS__"),
+            C("Item No", SheetColumnType.Number, false, "__COMPUTED_REQUISITION_ITEM_NO__"),
+            C("Service Description", SheetColumnType.Text, false, "__COMPUTED_REQUISITION_DESCRIPTION__"),
+            C("Unit", SheetColumnType.Text, false, "__COMPUTED_REQUISITION_UNIT__"),
+            C("Qty", SheetColumnType.Number, false, "__COMPUTED_REQUISITION_QTY__"),
             C("PO NO."),
             C("Contract No"),
             C("Subcontractor"),
             C("Local/Abroad", SheetColumnType.Dropdown, true, "Local,Abroad"),
-            C("Service Description"),
             C("Export Job No"),
             C("Import Job No"),
             C("Invoice Number"),
