@@ -62,7 +62,7 @@ else if (Model.Type == "contractors")
     <div class="master-list">
     @foreach (var x in Model.Contractors)
     {
-        <form asp-action="SaveContractor" method="post" class="master-edit-row contractor-row"><input type="hidden" name="id" value="@x.Id"/><input class="form-control" name="name" value="@x.Name"/><input class="form-control" name="contactPerson" value="@x.ContactPerson" placeholder="Contact"/><input class="form-control" name="phone" value="@x.Phone" placeholder="Phone"/><input class="form-control" name="email" value="@x.Email" placeholder="Email"/><label class="active-toggle"><input type="checkbox" name="isActive" value="true" checked="@x.IsActive"/><span>Active</span></label><button class="btn btn-sm btn-outline-primary"><i class="bi bi-check2"></i> Save</button></form>
+        <form asp-action="SaveContractor" method="post" class="master-edit-row contractor-row"><input type="hidden" name="id" value="@x.Id"/><input class="form-control" name="name" value="@x.Name"/><input class="form-control" name="contactPerson" value="@x.ContactPerson" placeholder="Contact"/><input class="form-control" name="phone" value="@x.Phone" placeholder="Phone"/><input class="form-control" name="email" value="@x.Email" placeholder="Email"/><label class="active-toggle"><input type="checkbox" name="isActive" value="true" checked="@x.IsActive"/><span>Active</span></label><a class="btn btn-sm btn-outline-secondary" asp-controller="Documents" asp-action="Record" asp-route-referenceType="Contractor" asp-route-referenceId="@x.Id" title="Documents"><i class="bi bi-paperclip"></i></a><button class="btn btn-sm btn-outline-primary"><i class="bi bi-check2"></i> Save</button></form>
     }
     </div>
 }

@@ -84,7 +84,7 @@ public class JobsController : Controller
             ServiceStart = vm.ServiceStart, ServiceEnd = vm.ServiceEnd, Status = vm.Status,
             InvoiceNumber = vm.InvoiceNumber?.Trim(), InvoiceDate = vm.InvoiceDate, PaymentStatus = vm.PaymentStatus,
             ProcessorName = vm.ProcessorName?.Trim(), CreatedByUserId = userId, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
-            Lines = vm.Lines.Select(x => new JobLine { Description = x.Description.Trim(), UnitId = x.UnitId, Quantity = x.Quantity, UnitRate = x.UnitRate, CurrencyId = x.CurrencyId }).ToList()
+            Lines = vm.Lines.Select(x => new JobLine { ItemSerialNumber = x.ItemSerialNumber, Description = x.Description.Trim(), UnitId = x.UnitId, Quantity = x.Quantity, UnitRate = x.UnitRate, CurrencyId = x.CurrencyId }).ToList()
         };
         _db.Jobs.Add(job);
         try
@@ -118,7 +118,7 @@ public class JobsController : Controller
             Id = job.Id, JobNumber = job.JobNumber, ProjectId = job.ProjectId, DepartmentId = job.DepartmentId, ContractorId = job.ContractorId,
             Description = job.Description, JobDate = job.JobDate, ServiceStart = job.ServiceStart, ServiceEnd = job.ServiceEnd, Status = job.Status,
             InvoiceNumber = job.InvoiceNumber, InvoiceDate = job.InvoiceDate, PaymentStatus = job.PaymentStatus, ProcessorName = job.ProcessorName,
-            Lines = job.Lines.Select(x => new JobLineInputVm { Id = x.Id, Description = x.Description, UnitId = x.UnitId, Quantity = x.Quantity, UnitRate = x.UnitRate, CurrencyId = x.CurrencyId }).ToList()
+            Lines = job.Lines.Select(x => new JobLineInputVm { Id = x.Id, ItemSerialNumber = x.ItemSerialNumber, Description = x.Description, UnitId = x.UnitId, Quantity = x.Quantity, UnitRate = x.UnitRate, CurrencyId = x.CurrencyId }).ToList()
         };
         await FillListsAsync(vm);
         return View(vm);
@@ -142,7 +142,7 @@ public class JobsController : Controller
         job.InvoiceNumber = vm.InvoiceNumber?.Trim(); job.InvoiceDate = vm.InvoiceDate; job.PaymentStatus = vm.PaymentStatus; job.ProcessorName = vm.ProcessorName?.Trim();
         job.UpdatedAt = DateTime.UtcNow;
         _db.JobLines.RemoveRange(job.Lines);
-        job.Lines = vm.Lines.Select(x => new JobLine { Description = x.Description.Trim(), UnitId = x.UnitId, Quantity = x.Quantity, UnitRate = x.UnitRate, CurrencyId = x.CurrencyId }).ToList();
+        job.Lines = vm.Lines.Select(x => new JobLine { ItemSerialNumber = x.ItemSerialNumber, Description = x.Description.Trim(), UnitId = x.UnitId, Quantity = x.Quantity, UnitRate = x.UnitRate, CurrencyId = x.CurrencyId }).ToList();
         await _db.SaveChangesAsync();
         await _audit.WriteAsync(HttpContext, "Edit", "Job", job.Id, job.JobNumber);
         TempData["Success"] = $"Job {job.JobNumber} updated.";
@@ -157,6 +157,11 @@ public class JobsController : Controller
         var job = await _db.Jobs.FirstOrDefaultAsync(x => x.Id == id);
         if (job == null) return NotFound();
         if (!await CanAccessDepartment(job.DepartmentId)) return Forbid();
+        if (job.IsAccepted || job.Status == JobStatus.Cancelled)
+        {
+            TempData["Error"] = $"Job {job.JobNumber} is an accepted/final business record and cannot be deleted. Use Cancel Job with a reason instead.";
+            return RedirectToAction(nameof(Details), new { id });
+        }
         var number = job.JobNumber;
         job.IsDeleted = true;
         job.DeletedAt = DateTime.UtcNow;
@@ -168,6 +173,40 @@ public class JobsController : Controller
         return RedirectToAction(nameof(Index));
     }
 
+
+    [RequirePermission("Jobs.Accept")]
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> Accept(int id)
+    {
+        var job = await _db.Jobs.FirstOrDefaultAsync(x => x.Id == id);
+        if (job == null) return NotFound();
+        if (!await CanAccessDepartment(job.DepartmentId)) return Forbid();
+        if (job.Status == JobStatus.Cancelled) { TempData["Error"] = "A cancelled job cannot be accepted."; return RedirectToAction(nameof(Details), new { id }); }
+        if (!job.IsAccepted)
+        {
+            job.IsAccepted = true; job.AcceptedAt = DateTime.UtcNow; job.AcceptedByUserId = _userManager.GetUserId(User); job.UpdatedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync(); await _audit.WriteAsync(HttpContext, "Accept", "Job", job.Id, job.JobNumber);
+        }
+        TempData["Success"] = $"Job {job.JobNumber} accepted. It is now protected from deletion.";
+        return RedirectToAction(nameof(Details), new { id });
+    }
+
+    [RequirePermission("Jobs.Cancel")]
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> Cancel(int id, string cancellationReason, string? cancellationNotes)
+    {
+        var job = await _db.Jobs.FirstOrDefaultAsync(x => x.Id == id);
+        if (job == null) return NotFound();
+        if (!await CanAccessDepartment(job.DepartmentId)) return Forbid();
+        if (!job.IsAccepted) { TempData["Error"] = "Only an accepted job uses the protected cancellation workflow."; return RedirectToAction(nameof(Details), new { id }); }
+        if (job.Status == JobStatus.Cancelled) { TempData["Error"] = "This job is already cancelled."; return RedirectToAction(nameof(Details), new { id }); }
+        if (string.IsNullOrWhiteSpace(cancellationReason)) { TempData["Error"] = "Cancellation reason is required."; return RedirectToAction(nameof(Details), new { id }); }
+        job.PreviousStatus = job.Status; job.Status = JobStatus.Cancelled; job.CancelledAt = DateTime.UtcNow;
+        job.CancelledByUserId = _userManager.GetUserId(User); job.CancellationReason = cancellationReason.Trim(); job.CancellationNotes = cancellationNotes?.Trim(); job.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync(); await _audit.WriteAsync(HttpContext, "Cancel", "Job", job.Id, $"{job.JobNumber}; Previous status: {job.PreviousStatus}; Reason: {job.CancellationReason}");
+        TempData["Success"] = $"Job {job.JobNumber} cancelled. The job number, documents and history remain permanently available.";
+        return RedirectToAction(nameof(Details), new { id });
+    }
 
     [RequirePermission("Jobs.Delete")]
     public async Task<IActionResult> RecycleBin()
@@ -238,7 +277,14 @@ public class JobsController : Controller
     private void NormalizeLines(JobFormVm vm)
     {
         vm.Lines = (vm.Lines ?? new List<JobLineInputVm>()).Where(x => !string.IsNullOrWhiteSpace(x.Description) || x.Quantity > 0 || x.UnitRate > 0).ToList();
+        for (var i = 0; i < vm.Lines.Count; i++)
+        {
+            var raw = vm.Lines[i].ItemSerialNumber?.Trim();
+            vm.Lines[i].ItemSerialNumber = string.IsNullOrWhiteSpace(raw) ? $"{i + 1:000}" : (int.TryParse(raw, out var n) ? $"{n:000}" : raw);
+        }
         if (vm.Lines.Count == 0) ModelState.AddModelError(nameof(vm.Lines), "At least one job line is required.");
+        if (vm.Lines.Where(x => !string.IsNullOrWhiteSpace(x.ItemSerialNumber)).GroupBy(x => x.ItemSerialNumber, StringComparer.OrdinalIgnoreCase).Any(g => g.Count() > 1))
+            ModelState.AddModelError(nameof(vm.Lines), "Item serial numbers must be unique within the job.");
     }
 
     private async Task ValidateBusinessRulesAsync(JobFormVm vm, int? currentId)

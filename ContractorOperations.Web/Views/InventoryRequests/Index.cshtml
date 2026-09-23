@@ -6,7 +6,7 @@
 
 <div class="page-heading">
     <div><h1>Inventory Requests</h1><p>Submit, review, accept, reject, issue and return project inventory requests.</p></div>
-    <a class="btn btn-primary" asp-action="Create"><i class="bi bi-plus-lg"></i> New Request</a>
+    <div class="page-actions no-print"><button class="btn btn-outline-secondary" onclick="window.print()"><i class="bi bi-printer"></i> Print</button><a class="btn btn-primary" asp-action="Create"><i class="bi bi-plus-lg"></i> New Request</a></div>
 </div>
 
 <div class="kpi-grid inventory-request-kpis">
@@ -37,6 +37,7 @@
                     <td>@(r.RequiredDate?.ToString("dd MMM yyyy") ?? "—")</td>
                     <td><span class="badge text-bg-@statusClass">@r.Status</span>@if(!string.IsNullOrWhiteSpace(r.RejectionReason)){<small class="d-block text-danger mt-1">@r.RejectionReason</small>}</td>
                     <td>
+                        <div class="mb-1 no-print"><a class="btn btn-sm btn-outline-secondary" asp-controller="Documents" asp-action="Record" asp-route-referenceType="InventoryRequest" asp-route-referenceId="@r.Id"><i class="bi bi-paperclip"></i> Docs</a></div>
                         @if (Model.CanApprove && r.Status == InventoryRequestStatus.Pending)
                         {
                             <div class="request-actions-stack">

@@ -1,0 +1,107 @@
+@model ServiceApprovalDetailsVm
+@inject IPermissionService PermissionService
+@{
+    ViewData["Title"] = Model.Approval.ApprovalNumber ?? "Pending Service Approval";
+    var canApprove = await PermissionService.HasPermissionAsync(User, "ServiceApprovals.Approve");
+    var canSign = await PermissionService.HasPermissionAsync(User, "Documents.Sign");
+    var currentUserId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+    var elevated = User.IsInRole("Administrator") || User.IsInRole("Super Admin");
+    string StatusLabel(ServiceApprovalStatus status) => status == ServiceApprovalStatus.PendingApproval ? "Waiting Approval" : status.ToString();
+    string StageLabel(ApprovalStageStatus status) => status == ApprovalStageStatus.Pending ? "Waiting" : status.ToString();
+}
+<div class="page-heading">
+    <div>
+        <span class="reference-chip">STEP 2 · SERVICE APPROVAL</span>
+        <h1>@(Model.Approval.ApprovalNumber ?? "Pending Number")</h1>
+        <p>Related Requisition: <strong>@Model.Approval.RequisitionNumber</strong> · @Model.Approval.Project?.Name</p>
+    </div>
+    <div class="page-actions no-print">
+        <a class="btn btn-outline-secondary" asp-controller="Documents" asp-action="Record" asp-route-referenceType="ServiceApproval" asp-route-referenceId="@Model.Approval.Id"><i class="bi bi-folder2-open"></i> Documents (@Model.Documents.Count)</a>
+        <a class="btn btn-outline-primary" asp-controller="CompanyDocuments" asp-action="Create" asp-route-serviceApprovalId="@Model.Approval.Id"><i class="bi bi-file-earmark-richtext"></i> Generate Company Document</a>
+        <a class="btn btn-outline-secondary" asp-action="Print" asp-route-id="@Model.Approval.Id" target="_blank"><i class="bi bi-printer"></i> Print Record</a>
+        <a class="btn btn-outline-secondary" asp-action="Index">Back</a>
+    </div>
+</div>
+<div class="service-approval-statusbar">
+    <div><small>Status</small><strong class="status @Model.Approval.Status.ToString().ToLowerInvariant()">@StatusLabel(Model.Approval.Status)</strong></div>
+    <div><small>Requisition</small><strong>@Model.Approval.RequisitionNumber</strong></div>
+    <div><small>Amount</small><strong>@Model.Approval.ServiceAmount.ToString("N2") @Model.Approval.Currency?.Code</strong></div>
+    <div><small>Approval Stage</small><strong>@Model.Approval.CurrentStage / @Model.Approval.Stages.Count</strong></div>
+</div>
+@if (Model.Approval.Status == ServiceApprovalStatus.PendingApproval)
+{
+    var currentStage = Model.Approval.Stages.OrderBy(x => x.StageNumber).FirstOrDefault(x => x.StageNumber == Model.Approval.CurrentStage);
+    <section class="panel mt-3 waiting-decision-panel">
+        <div><i class="bi bi-hourglass-split"></i><div><strong>Waiting Approval</strong><p>This Service Approval is waiting for <b>@(currentStage?.Title ?? $"Stage {Model.Approval.CurrentStage}")</b>. The assigned approver will Accept or Reject it. A rejection requires a reason and remains in history.</p></div></div>
+    </section>
+}
+<div class="dashboard-grid-2 mt-3">
+    <section class="panel">
+        <h3>Overview</h3>
+        <dl class="detail-grid">
+            <dt>Service Approval No.</dt><dd><strong>@(Model.Approval.ApprovalNumber ?? "Pending until final approval")</strong></dd>
+            <dt>Date</dt><dd>@Model.Approval.ApprovalDate.ToString("dd MMM yyyy")</dd>
+            <dt>Type</dt><dd>@Model.Approval.ServiceType</dd>
+            <dt>Vendor Selection</dt><dd>@(Model.Approval.VendorSelectionMethod ?? "-")</dd>
+            <dt>Department</dt><dd>@(Model.Approval.Department?.Name ?? "-")</dd>
+            <dt>Approval Content</dt><dd>@Model.Approval.Description</dd>
+            @if (!string.IsNullOrWhiteSpace(Model.Approval.RejectionReason)) { <dt>Rejection Reason</dt><dd class="text-danger">@Model.Approval.RejectionReason</dd> }
+        </dl>
+    </section>
+    <section class="panel">
+        <h3>Signatures &amp; Company Stamp</h3>
+        <p class="text-muted small">Each approved stage uses the actual approver's personal signature. The company stamp remains a centrally controlled company asset.</p>
+        <div class="signature-policy-summary"><i class="bi bi-person-check"></i><div><strong>Personal signatures are not shared</strong><span>Managers and approvers manage their own signature from My Profile. BGP records the actual signer, stage and time.</span></div></div>
+        @if (Model.AssetUsages.Any())
+        {
+            <div class="asset-use-grid mt-3">
+            @foreach (var u in Model.AssetUsages.Where(x => x.OfficialDocumentAsset?.AssetType == "CompanyStamp"))
+            {
+                <div class="asset-use-card"><strong>Company Stamp</strong>@if(u.OfficialDocumentAsset != null){<img src="@Url.Action("OfficialAsset","Settings",new{id=u.OfficialDocumentAssetId})"/>}<small>Applied by @(Model.UserNames.TryGetValue(u.AppliedByUserId,out var un)?un:u.AppliedByUserId)<br/>@u.AppliedAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")</small></div>
+            }
+            </div>
+        }
+        @if (canSign && Model.Approval.Status == ServiceApprovalStatus.Approved && !Model.HasCompanyStamp)
+        {
+            <form asp-action="ApplyOfficialAsset" method="post" class="mt-3"><input type="hidden" name="id" value="@Model.Approval.Id"/><input type="hidden" name="assetType" value="CompanyStamp"/><button class="btn btn-outline-primary"><i class="bi bi-patch-check"></i> Apply Company Stamp</button></form>
+        }
+    </section>
+</div>
+<section class="panel mt-3">
+    <div class="subsection-title"><div><h3>Requisition Items</h3><p>These items are loaded from the accepted requisition and remain linked to it.</p></div></div>
+    <div class="table-responsive"><table class="table"><thead><tr><th>Item Serial No.</th><th>Description</th><th>Unit</th><th>Qty</th></tr></thead><tbody>@foreach(var x in Model.RequisitionItems){<tr><td><strong>@x.ItemNumber</strong></td><td>@x.Description</td><td>@x.Unit</td><td>@x.Quantity</td></tr>}</tbody></table></div>
+</section>
+<section class="panel mt-3">
+    <div class="subsection-title"><div><h3>Approval &amp; Signature Queue</h3><p>Only the current stage can be decided. Status remains Waiting Approval until all required stages are accepted.</p></div></div>
+    <div class="approval-timeline">
+    @foreach (var s in Model.Approval.Stages.OrderBy(x => x.StageNumber))
+    {
+        var isCurrent = Model.Approval.Status == ServiceApprovalStatus.PendingApproval && s.StageNumber == Model.Approval.CurrentStage;
+        var assignedOk = string.IsNullOrWhiteSpace(s.ApproverUserId) || s.ApproverUserId == currentUserId || elevated;
+        <div class="approval-stage-card @(isCurrent ? "current" : "")">
+            <div class="stage-number">@s.StageNumber</div>
+            <div class="stage-content">
+                <div class="stage-title-row"><strong>@s.Title</strong><span class="status @s.Status.ToString().ToLowerInvariant()">@StageLabel(s.Status)</span></div>
+                <small>Assigned: @(string.IsNullOrWhiteSpace(s.ApproverUserId) ? "Any authorized approver" : Model.UserNames.TryGetValue(s.ApproverUserId,out var an) ? an : s.ApproverUserId)</small>
+                @if (s.DecidedAt.HasValue) { <p class="mb-1">Decision by @(s.DecidedByUserId != null && Model.UserNames.TryGetValue(s.DecidedByUserId,out var dn) ? dn : s.DecidedByUserId) on @s.DecidedAt.Value.ToLocalTime().ToString("dd MMM yyyy HH:mm")</p> }
+                @if (s.UserSignatureId.HasValue && s.Status == ApprovalStageStatus.Approved) { <div class="stage-signature"><img src="@Url.Action("UserSignature","Account",new{id=s.UserSignatureId.Value})" alt="Approver signature"/><small>Signed by the recorded approver</small></div> }
+                @if (!string.IsNullOrWhiteSpace(s.Comment)) { <p class="stage-comment"><b>Reason / Comment:</b> @s.Comment</p> }
+                @if (isCurrent && canApprove && assignedOk)
+                {
+                    @if (!Model.CurrentUserHasSignature) { <div class="alert alert-warning py-2 small"><i class="bi bi-pen me-1"></i> Upload your personal signature in <a asp-controller="Account" asp-action="Profile">My Profile</a> before approving.</div> }
+                    <form asp-action="Decide" method="post" class="approval-decision-form">
+                        <input type="hidden" name="id" value="@Model.Approval.Id"/><input type="hidden" name="stageId" value="@s.Id"/>
+                        <textarea class="form-control" name="comment" rows="2" placeholder="Reason / comment (required when rejecting)"></textarea>
+                        <div class="action-row">@if(Model.CurrentUserHasSignature){<button class="btn btn-success" name="approve" value="true"><i class="bi bi-check2-circle"></i> Accept &amp; Sign</button>}else{<button class="btn btn-success" type="button" disabled><i class="bi bi-check2-circle"></i> Accept &amp; Sign</button>}<button class="btn btn-outline-danger" name="approve" value="false"><i class="bi bi-x-circle"></i> Reject</button></div>
+                    </form>
+                }
+                else if (isCurrent && !assignedOk)
+                {
+                    <div class="decision-assigned"><i class="bi bi-person-lock"></i> Waiting for the assigned approver</div>
+                }
+            </div>
+        </div>
+    }
+    </div>
+</section>
+<section class="panel mt-3"><div class="subsection-title"><div><h3>History</h3><p>Important decisions and changes are read-only and audit recorded.</p></div></div><div class="audit-mini-list">@if(!Model.AuditHistory.Any()){<p class="text-muted">No audit entries yet.</p>}@foreach(var h in Model.AuditHistory){<div><strong>@h.Action</strong><span>@(h.UserName ?? "System") · @h.TimestampUtc.ToLocalTime().ToString("dd MMM yyyy HH:mm")</span><p>@h.Details</p></div>}</div></section>

@@ -79,6 +79,7 @@ public class DepartmentAmountVm
 public class JobLineInputVm
 {
     public int? Id { get; set; }
+    [MaxLength(20)] public string? ItemSerialNumber { get; set; }
     [Required, MaxLength(300)] public string Description { get; set; } = string.Empty;
     [Range(typeof(decimal), "0.001", "999999999")] public decimal Quantity { get; set; } = 1;
     [Range(typeof(decimal), "0", "999999999")] public decimal UnitRate { get; set; }
@@ -237,6 +238,8 @@ public class ProfileVm
     public string Email { get; set; } = string.Empty;
     public string Roles { get; set; } = string.Empty;
     public string Departments { get; set; } = string.Empty;
+    public UserSignature? ActiveSignature { get; set; }
+    public bool CanManageSignature { get; set; }
 }
 
 public class StockTransferVm
@@ -299,6 +302,7 @@ public class SheetDetailsVm
     public string? Search { get; set; }
     public int? LinkedImportExportSheetId { get; set; }
     public List<ProjectSheet> WorkflowSheets { get; set; } = new();
+    public List<ApplicationUser> ApprovalManagers { get; set; } = new();
 }
 
 public class SheetRowFormVm
@@ -312,6 +316,112 @@ public class SheetRowFormVm
     public List<Currency> Currencies { get; set; } = new();
     public Dictionary<string,List<string>> ReferenceOptions { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public List<ApplicationUser> ApprovalManagers { get; set; } = new();
+    public List<int> ReleasedItemNumbers { get; set; } = new();
+}
+
+public class ServiceApprovalFormVm
+{
+    public long? Id { get; set; }
+    [Required] public string RequisitionNumber { get; set; } = string.Empty;
+    public int ProjectId { get; set; }
+    public int? DepartmentId { get; set; }
+    [DataType(DataType.Date)] public DateTime ApprovalDate { get; set; } = DateTime.Today;
+    [Range(typeof(decimal), "0", "999999999999")] public decimal ServiceAmount { get; set; }
+    public int? CurrencyId { get; set; }
+    [Required, MaxLength(2000)] public string Description { get; set; } = string.Empty;
+    [MaxLength(80)] public string ServiceType { get; set; } = "Expenditure";
+    [MaxLength(120)] public string? VendorSelectionMethod { get; set; }
+    [Range(3, 4)] public int StageCount { get; set; } = 4;
+    public List<string> StageTitles { get; set; } = new() { "Business Chief / Project", "Financial Controller", "Project / Institution Principal", "Chief Financial Officer" };
+    public List<string?> ApproverUserIds { get; set; } = new() { null, null, null, null };
+    public IEnumerable<SelectListItem> Requisitions { get; set; } = Array.Empty<SelectListItem>();
+    public IEnumerable<SelectListItem> Currencies { get; set; } = Array.Empty<SelectListItem>();
+    public IEnumerable<SelectListItem> Approvers { get; set; } = Array.Empty<SelectListItem>();
+}
+
+public class RequisitionItemVm
+{
+    public string ItemNumber { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public string Unit { get; set; } = string.Empty;
+    public string Quantity { get; set; } = string.Empty;
+}
+
+public class ServiceApprovalDetailsVm
+{
+    public ServiceApproval Approval { get; set; } = new();
+    public List<RequisitionItemVm> RequisitionItems { get; set; } = new();
+    public List<DocumentRecord> Documents { get; set; } = new();
+    public List<DocumentAssetUsage> AssetUsages { get; set; } = new();
+    public bool HasCompanyStamp { get; set; }
+    public bool CurrentUserHasSignature { get; set; }
+    public Dictionary<string,string> UserNames { get; set; } = new();
+    public List<AuditLog> AuditHistory { get; set; } = new();
+}
+
+public class DocumentLibraryVm
+{
+    public List<DocumentRecord> Documents { get; set; } = new();
+    public string? Query { get; set; }
+    public string? ReferenceType { get; set; }
+    public string? RequisitionNumber { get; set; }
+    public string? JobNumber { get; set; }
+    public string? ServiceApprovalNumber { get; set; }
+}
+
+public class DocumentTemplateFormVm
+{
+    public int? Id { get; set; }
+    [Required, MaxLength(160)] public string Name { get; set; } = string.Empty;
+    [Required, MaxLength(60)] public string DocumentType { get; set; } = "Custom";
+    [MaxLength(1000)] public string? Description { get; set; }
+    [Required] public string HtmlContent { get; set; } = string.Empty;
+    [MaxLength(1000)] public string? EditableFieldLabels { get; set; }
+    [MaxLength(1000)] public string? SignatureSlotLabels { get; set; }
+    public string? ExistingSourceFileName { get; set; }
+}
+
+public class CompanyDocumentCreateVm
+{
+    [Range(1, int.MaxValue)] public int DocumentTemplateId { get; set; }
+    [Required, MaxLength(180)] public string Title { get; set; } = string.Empty;
+    public long? ServiceApprovalId { get; set; }
+    public int? JobId { get; set; }
+    [MaxLength(80)] public string? RequisitionNumber { get; set; }
+    public int? ProjectId { get; set; }
+    public IEnumerable<SelectListItem> Templates { get; set; } = Array.Empty<SelectListItem>();
+    public string? LinkedReferenceLabel { get; set; }
+}
+
+public class CompanyDocumentEditVm
+{
+    public long Id { get; set; }
+    [Required, MaxLength(180)] public string Title { get; set; } = string.Empty;
+    [MaxLength(2000)] public string? CustomText1 { get; set; }
+    [MaxLength(2000)] public string? CustomText2 { get; set; }
+    [MaxLength(2000)] public string? CustomText3 { get; set; }
+    [MaxLength(2000)] public string? CustomText4 { get; set; }
+    public string[] EditableFieldLabels { get; set; } = Array.Empty<string>();
+}
+
+public class CompanyDocumentDetailsVm
+{
+    public GeneratedCompanyDocument Document { get; set; } = new();
+    public DocumentTemplate? Template { get; set; }
+    public List<GeneratedDocumentSignature> Signatures { get; set; } = new();
+    public List<DocumentAssetUsage> AssetUsages { get; set; } = new();
+    public Dictionary<string,string> UserNames { get; set; } = new();
+    public string[] SignatureSlotLabels { get; set; } = Array.Empty<string>();
+    public bool CurrentUserHasSignature { get; set; }
+    public bool HasCompanyStamp { get; set; }
+    public List<AuditLog> AuditHistory { get; set; } = new();
+}
+
+public class CompanyDocumentLibraryVm
+{
+    public List<GeneratedCompanyDocument> Documents { get; set; } = new();
+    public List<DocumentTemplate> Templates { get; set; } = new();
+    public string? Query { get; set; }
 }
 
 public class InventoryRequestListVm

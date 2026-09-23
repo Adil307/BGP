@@ -3,9 +3,9 @@
     var editing = Model.Row != null;
     var isRequisition = Model.Sheet.Name.Equals("Requisition", StringComparison.OrdinalIgnoreCase);
     var isServiceBusiness = Model.Sheet.Name.Equals("Service Business", StringComparison.OrdinalIgnoreCase);
-    var isServiceApproval = Model.Sheet.Name.Equals("Service Approval", StringComparison.OrdinalIgnoreCase);
+    var isServiceApproval = Model.Sheet.Name.Equals("Requisition Approval", StringComparison.OrdinalIgnoreCase);
     var displaySheetName = Model.Sheet.Name == "Requisition" ? "Service Requisition"
-        : isServiceApproval ? "Manager Approval"
+        : isServiceApproval ? "Requisition Approval"
         : Model.Sheet.Name == "Service Business" ? "Job Creation"
         : Model.Sheet.Name == "Service Logistics" ? "Logistics & Return"
         : Model.Sheet.Name == "Invoice Reception" ? "Invoice & Payment"
@@ -37,7 +37,7 @@
     {
         <div class="workflow-form-notice approval-notice">
             <i class="bi bi-person-check-fill"></i>
-            <div><strong>Manager Approval</strong><span>Submit the linked requisition to the responsible PM/manager for a formal decision. The assigned approver receives a notification and must approve or reject the request before Job Creation can continue.</span></div>
+            <div><strong>Requisition Approval</strong><span>Submit the completed requisition to the responsible manager for an Approve or Reject decision. Only an approved requisition can move to the Service Approval Sheet.</span></div>
         </div>
     }
     else if (isRequisition)
@@ -46,23 +46,36 @@
     }
     else if (isServiceBusiness)
     {
-        <div class="workflow-form-notice"><i class="bi bi-briefcase-fill"></i><div><strong>Step 3 · Job Creation</strong><span>Select the approved requisition and its Manager Approval. On save, every requisition line item is copied automatically into the service job under one shared Job Number.</span></div></div>
+        <div class="workflow-form-notice"><i class="bi bi-briefcase-fill"></i><div><strong>Step 4 · Job Creation</strong><span>Select the approved requisition and the final Service Approval Number. On save, every requisition item is copied automatically under one shared Job Number.</span></div></div>
     }
     else if (isPurchaseOrder)
     {
-        <div class="workflow-form-notice"><i class="bi bi-receipt"></i><div><strong>Step 4 · Purchase Order</strong><span>Create the vendor PO against an approved service job and record quotation/terms.</span></div></div>
+        <div class="workflow-form-notice"><i class="bi bi-receipt"></i><div><strong>Step 5 · Purchase Order</strong><span>Create the vendor PO against an approved service job and record quotation/terms.</span></div></div>
     }
     else if (isServiceLogistics)
     {
-        <div class="workflow-form-notice"><i class="bi bi-truck"></i><div><strong>Step 5 · Logistics & Return</strong><span>Track local delivery or international export, follow-up, received-back date and import reference.</span></div></div>
+        <div class="workflow-form-notice"><i class="bi bi-truck"></i><div><strong>Step 6 · Logistics & Return</strong><span>Track local delivery or international export, follow-up, received-back date and import reference.</span></div></div>
     }
     else if (isInvoiceReception)
     {
-        <div class="workflow-form-notice"><i class="bi bi-cash-stack"></i><div><strong>Step 6 · Invoice & Payment Follow-up</strong><span>Invoice reception starts after the equipment/service is received back. Duplicate invoice numbers are blocked across BGP.</span></div></div>
+        <div class="workflow-form-notice"><i class="bi bi-cash-stack"></i><div><strong>Step 7 · Invoice & Payment Follow-up</strong><span>Invoice reception starts after the equipment/service is received back. Duplicate invoice numbers are blocked across BGP.</span></div></div>
     }
     <form asp-action="@(editing ? "EditRowPost" : "AddRowPost")" method="post" enctype="multipart/form-data">
         @if (editing) { <input type="hidden" name="id" value="@Model.Row!.Id"/> } else { <input type="hidden" name="sheetId" value="@Model.Sheet.Id"/> }
         <div asp-validation-summary="All" class="text-danger mb-3"></div>
+        @if (addingRequisitionItem)
+        {
+            <div class="item-number-method-card">
+                <div><strong>Item Number Method</strong><span>Keep numbering controlled inside requisition <b>@activeRequisitionNo</b>.</span></div>
+                <label class="form-check"><input class="form-check-input" type="radio" name="itemNumberMethod" value="auto" checked /> <span>Auto Generate New Number</span></label>
+                <label class="form-check"><input class="form-check-input" type="radio" name="itemNumberMethod" value="reuse" @(Model.ReleasedItemNumbers.Any() ? null : "disabled") /> <span>Reuse Available Number</span></label>
+                <select class="form-select" name="releasedItemNumber" id="releasedItemNumber" disabled>
+                    <option value="">-- Select released number --</option>
+                    @foreach (var n in Model.ReleasedItemNumbers) { <option value="@n">@n.ToString("000")</option> }
+                </select>
+                @if (!Model.ReleasedItemNumbers.Any()) { <small class="text-muted">No released numbers are currently available. Auto Generate will use the next number.</small> }
+            </div>
+        }
         <div class="dynamic-form-grid">
         @foreach (var col in Model.Columns)
         {
@@ -203,6 +216,18 @@
         <div class="form-actions mt-4"><a class="btn btn-light border" asp-action="Details" asp-route-id="@Model.Sheet.Id">Cancel</a>@if(Model.Columns.Any()){<button class="btn btn-primary"><i class="bi bi-check2"></i> @(editing ? "Save Changes" : addLabel)</button>}else{<button class="btn btn-primary" type="button" disabled><i class="bi bi-check2"></i> @addLabel</button>}</div>
     </form>
 </section>
+
+@if (addingRequisitionItem)
+{
+<script>
+(function(){
+    const radios = document.querySelectorAll('input[name="itemNumberMethod"]');
+    const select = document.getElementById('releasedItemNumber');
+    function sync(){ const reuse = document.querySelector('input[name="itemNumberMethod"]:checked')?.value === 'reuse'; if(select) select.disabled = !reuse; }
+    radios.forEach(x => x.addEventListener('change', sync)); sync();
+})();
+</script>
+}
 
 @if ((localAbroadCol != null || logisticsModeCol != null) && exportJobCol != null && importJobCol != null)
 {

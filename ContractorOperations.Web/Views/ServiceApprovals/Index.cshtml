@@ -1,0 +1,64 @@
+@model List<ServiceApproval>
+@inject IPermissionService PermissionService
+@{
+    ViewData["Title"] = "Service Approvals";
+    var canCreate = await PermissionService.HasPermissionAsync(User, "ServiceApprovals.Create");
+    string StatusLabel(ServiceApprovalStatus status) => status == ServiceApprovalStatus.PendingApproval ? "Waiting Approval" : status.ToString();
+}
+<div class="page-heading">
+    <div>
+        <span class="reference-chip">STEP 2</span>
+        <h1>Service Approval</h1>
+        <p>Service Approval starts only after the requisition has been accepted. Each record remains Waiting Approval until the required approval/signature stages are completed.</p>
+    </div>
+    @if (canCreate)
+    {
+        <div class="page-actions"><a class="btn btn-primary" asp-action="Create" asp-route-projectId="@ViewBag.ProjectId"><i class="bi bi-plus-lg"></i> Create Service Approval</a></div>
+    }
+</div>
+<section class="panel mb-3 service-approval-process-note">
+    <div class="workflow-mini-flow"><span>1. Requisition Accepted</span><i class="bi bi-arrow-right"></i><span>2. Service Approval Created</span><i class="bi bi-arrow-right"></i><span>3. Waiting Approval</span><i class="bi bi-arrow-right"></i><span>4. Accept / Reject</span><i class="bi bi-arrow-right"></i><span>5. Final Number</span></div>
+</section>
+<section class="panel mb-3">
+    <form method="get" class="document-filter-grid">
+        <input class="form-control" name="q" value="@ViewBag.Query" placeholder="Search requisition, approval number or description..."/>
+        <select class="form-select" name="projectId" asp-items="ViewBag.Projects"><option value="">All Projects</option></select>
+        <select class="form-select" name="status">
+            <option value="">All Statuses</option>
+            @foreach (var s in Enum.GetValues<ServiceApprovalStatus>())
+            {
+                if (ViewBag.Status?.ToString() == s.ToString()) { <option value="@s" selected>@StatusLabel(s)</option> }
+                else { <option value="@s">@StatusLabel(s)</option> }
+            }
+        </select>
+        <button class="btn btn-primary"><i class="bi bi-search"></i> Search</button>
+        <a class="btn btn-light border" asp-action="Index">Clear</a>
+    </form>
+</section>
+<section class="panel p-0 overflow-hidden">
+    <div class="table-responsive">
+        <table class="table mb-0">
+            <thead><tr><th>Service Approval No.</th><th>Requisition</th><th>Project / Department</th><th>Date</th><th>Amount</th><th>Status</th><th>Current Approval</th><th></th></tr></thead>
+            <tbody>
+            @if (!Model.Any())
+            {
+                <tr><td colspan="8" class="text-center py-5 text-muted">No Service Approval records found. Accept a requisition first, then create its Service Approval.</td></tr>
+            }
+            @foreach (var x in Model)
+            {
+                var currentStage = x.Stages.OrderBy(s => s.StageNumber).FirstOrDefault(s => s.StageNumber == x.CurrentStage);
+                <tr>
+                    <td><strong>@(x.ApprovalNumber ?? "Pending until final approval")</strong></td>
+                    <td>@x.RequisitionNumber</td>
+                    <td>@x.Project?.Name<br/><small>@(x.Department?.Name ?? "-")</small></td>
+                    <td>@x.ApprovalDate.ToString("dd MMM yyyy")</td>
+                    <td>@x.ServiceAmount.ToString("N2") @(x.Currency?.Code)</td>
+                    <td><span class="status @x.Status.ToString().ToLowerInvariant()">@StatusLabel(x.Status)</span></td>
+                    <td>@if(x.Status == ServiceApprovalStatus.PendingApproval){<strong>@(currentStage?.Title ?? $"Stage {x.CurrentStage}")</strong><br/><small>Waiting for decision</small>}else{<span>-</span>}</td>
+                    <td><a class="btn btn-sm btn-outline-primary" asp-action="Details" asp-route-id="@x.Id">Open</a></td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</section>

@@ -12,13 +12,15 @@ public static class DbSeeder
     public static readonly string[] PermissionKeys =
     {
         "Dashboard.View",
-        "Jobs.View","Jobs.Create","Jobs.Edit","Jobs.Delete","Jobs.Export",
+        "Jobs.View","Jobs.Create","Jobs.Edit","Jobs.Delete","Jobs.Export","Jobs.Accept","Jobs.Cancel",
         "Inventory.View","Inventory.CreateItem","Inventory.EditItem","Inventory.Receive","Inventory.Issue","Inventory.Adjust","Inventory.Transfer","Inventory.Export","Inventory.Requests","Inventory.Approve",
         "Sheets.View","Sheets.Manage",
         "Reports.View","Reports.Export",
         "Projects.Manage","Departments.Manage","Contractors.Manage","MasterData.Manage",
         "Users.View","Users.Manage","Permissions.Manage",
-        "Audit.View","Settings.Manage","Data.AllDepartments"
+        "Audit.View","Settings.Manage","Data.AllDepartments",
+        "Documents.View","Documents.Upload","Documents.Delete","Documents.Print","Documents.Generate","Documents.Sign","Documents.Finalize","DocumentTemplates.Manage",
+        "ServiceApprovals.View","ServiceApprovals.Create","ServiceApprovals.Approve"
     };
 
     public static async Task SeedAsync(IServiceProvider services, IConfiguration configuration)
@@ -37,14 +39,16 @@ public static class DbSeeder
         var permissionDefs = new (string Key, string Name, string Group)[]
         {
             ("Dashboard.View","View dashboard","Dashboard"),
-            ("Jobs.View","View jobs","Jobs"),("Jobs.Create","Create jobs","Jobs"),("Jobs.Edit","Edit jobs","Jobs"),("Jobs.Delete","Delete jobs","Jobs"),("Jobs.Export","Export jobs","Jobs"),
+            ("Jobs.View","View jobs","Jobs"),("Jobs.Create","Create jobs","Jobs"),("Jobs.Edit","Edit jobs","Jobs"),("Jobs.Delete","Delete jobs","Jobs"),("Jobs.Export","Export jobs","Jobs"),("Jobs.Accept","Accept jobs and protect them from deletion","Jobs"),("Jobs.Cancel","Cancel accepted jobs with audit reason","Jobs"),
             ("Inventory.View","View stock inventory","Inventory"),("Inventory.CreateItem","Create stock items","Inventory"),("Inventory.EditItem","Edit stock items","Inventory"),("Inventory.Receive","Receive stock","Inventory"),("Inventory.Issue","Issue stock","Inventory"),("Inventory.Adjust","Adjust stock","Inventory"),("Inventory.Transfer","Transfer stock between warehouses","Inventory"),("Inventory.Export","Export inventory","Inventory"),
             ("Inventory.Requests","Create and view inventory requests","Inventory"),("Inventory.Approve","Accept or reject inventory requests","Inventory"),
             ("Sheets.View","View project and department sheets","Sheets"),("Sheets.Manage","Create and edit sheets, rows and columns","Sheets"),
             ("Reports.View","View reports","Reports"),("Reports.Export","Export reports","Reports"),
             ("Projects.Manage","Manage projects","Master Data"),("Departments.Manage","Manage departments","Master Data"),("Contractors.Manage","Manage contractors","Master Data"),("MasterData.Manage","Manage currencies, units, categories and warehouses","Master Data"),
             ("Users.View","View users","Security"),("Users.Manage","Manage users","Security"),("Permissions.Manage","Manage granular permissions","Security"),
-            ("Audit.View","View audit log","Audit"),("Settings.Manage","Manage system settings","Settings"),("Data.AllDepartments","Access data from all departments","Data Scope")
+            ("Audit.View","View audit log","Audit"),("Settings.Manage","Manage system settings","Settings"),("Data.AllDepartments","Access data from all departments","Data Scope"),
+            ("Documents.View","View and preview documents","Documents"),("Documents.Upload","Upload documents","Documents"),("Documents.Delete","Soft-delete uploaded documents","Documents"),("Documents.Print","Print documents","Documents"),("Documents.Generate","Generate controlled company documents from templates","Documents"),("Documents.Sign","Apply own signature or authorized company stamp","Documents"),("Documents.Finalize","Finalize or void generated company documents","Documents"),("DocumentTemplates.Manage","Manage company document templates","Documents"),
+            ("ServiceApprovals.View","View Service Approval Sheets","Service Approval"),("ServiceApprovals.Create","Create Service Approval Sheets","Service Approval"),("ServiceApprovals.Approve","Approve or reject Service Approval stages","Service Approval")
         };
 
         foreach (var p in permissionDefs)
@@ -80,12 +84,12 @@ public static class DbSeeder
         var userRole = await roleManager.FindByNameAsync("Department User");
         var readRole = await roleManager.FindByNameAsync("Read Only");
         var viewerRole = await roleManager.FindByNameAsync("Viewer");
-        await GrantRoleAsync(db, projectManagerRole, "Dashboard.View","Jobs.View","Jobs.Create","Jobs.Edit","Jobs.Export","Projects.Manage","Sheets.View","Sheets.Manage","Inventory.View","Inventory.Requests","Reports.View","Reports.Export");
-        await GrantRoleAsync(db, inventoryManagerRole, "Dashboard.View","Inventory.View","Inventory.CreateItem","Inventory.EditItem","Inventory.Receive","Inventory.Issue","Inventory.Adjust","Inventory.Transfer","Inventory.Export","Inventory.Requests","Inventory.Approve","Sheets.View","Reports.View","Reports.Export");
-        await GrantRoleAsync(db, headRole, "Dashboard.View","Jobs.View","Jobs.Create","Jobs.Edit","Jobs.Export","Inventory.View","Inventory.Receive","Inventory.Issue","Inventory.Transfer","Inventory.Requests","Inventory.Approve","Sheets.View","Sheets.Manage","Reports.View","Reports.Export");
-        await GrantRoleAsync(db, userRole, "Dashboard.View","Jobs.View","Jobs.Create","Inventory.View","Inventory.Requests","Sheets.View");
-        await GrantRoleAsync(db, readRole, "Dashboard.View","Jobs.View","Inventory.View","Sheets.View","Reports.View");
-        await GrantRoleAsync(db, viewerRole, "Dashboard.View","Jobs.View","Inventory.View","Sheets.View","Reports.View");
+        await GrantRoleAsync(db, projectManagerRole, "Dashboard.View","Jobs.View","Jobs.Create","Jobs.Edit","Jobs.Export","Jobs.Accept","Jobs.Cancel","Projects.Manage","Sheets.View","Sheets.Manage","Inventory.View","Inventory.Requests","Reports.View","Reports.Export","Documents.View","Documents.Upload","Documents.Delete","Documents.Print","Documents.Generate","Documents.Sign","Documents.Finalize","ServiceApprovals.View","ServiceApprovals.Create","ServiceApprovals.Approve");
+        await GrantRoleAsync(db, inventoryManagerRole, "Dashboard.View","Inventory.View","Inventory.CreateItem","Inventory.EditItem","Inventory.Receive","Inventory.Issue","Inventory.Adjust","Inventory.Transfer","Inventory.Export","Inventory.Requests","Inventory.Approve","Sheets.View","Reports.View","Reports.Export","Documents.View","Documents.Upload","Documents.Print","Documents.Generate");
+        await GrantRoleAsync(db, headRole, "Dashboard.View","Jobs.View","Jobs.Create","Jobs.Edit","Jobs.Export","Jobs.Accept","Jobs.Cancel","Inventory.View","Inventory.Receive","Inventory.Issue","Inventory.Transfer","Inventory.Requests","Inventory.Approve","Sheets.View","Sheets.Manage","Reports.View","Reports.Export","Documents.View","Documents.Upload","Documents.Delete","Documents.Print","Documents.Generate","Documents.Sign","Documents.Finalize","ServiceApprovals.View","ServiceApprovals.Create","ServiceApprovals.Approve");
+        await GrantRoleAsync(db, userRole, "Dashboard.View","Jobs.View","Jobs.Create","Inventory.View","Inventory.Requests","Sheets.View","Documents.View","Documents.Upload","Documents.Print","Documents.Generate","ServiceApprovals.View","ServiceApprovals.Create");
+        await GrantRoleAsync(db, readRole, "Dashboard.View","Jobs.View","Inventory.View","Sheets.View","Reports.View","Documents.View","ServiceApprovals.View");
+        await GrantRoleAsync(db, viewerRole, "Dashboard.View","Jobs.View","Inventory.View","Sheets.View","Reports.View","Documents.View","ServiceApprovals.View");
 
         if (!await db.Departments.AnyAsync())
         {

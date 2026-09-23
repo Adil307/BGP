@@ -2,27 +2,30 @@
 @inject IPermissionService PermissionService
 @{
     var displaySheetName = Model.Sheet.Name == "Requisition" ? "Service Requisition"
-        : Model.Sheet.Name == "Service Approval" ? "Manager Approval"
+        : Model.Sheet.Name == "Requisition Approval" ? "Requisition Approval"
         : Model.Sheet.Name == "Service Business" ? "Job Creation"
         : Model.Sheet.Name == "Service Logistics" ? "Logistics & Return"
         : Model.Sheet.Name == "Invoice Reception" ? "Invoice & Payment"
         : Model.Sheet.Name;
     ViewData["Title"] = displaySheetName;
     var canManage = await PermissionService.HasPermissionAsync(User, "Sheets.Manage");
+    var canGenerateDocument = await PermissionService.HasPermissionAsync(User, "Documents.Generate");
     var backUrl = Model.Sheet.ProjectId.HasValue
         ? Url.Action("Project", "Workspace", new { id = Model.Sheet.ProjectId.Value }) ?? "/Workspace"
         : Url.Action("Index", "Sheets", new { departmentId = Model.Sheet.DepartmentId }) ?? "/Sheets";
     var isRequisition = Model.Sheet.Name.Equals("Requisition", StringComparison.OrdinalIgnoreCase);
     var isServiceBusiness = Model.Sheet.Name.Equals("Service Business", StringComparison.OrdinalIgnoreCase);
-    var isServiceApproval = Model.Sheet.Name.Equals("Service Approval", StringComparison.OrdinalIgnoreCase);
+    var isServiceApproval = Model.Sheet.Name.Equals("Requisition Approval", StringComparison.OrdinalIgnoreCase);
     var canApprove = User.IsInRole("Project Manager") || User.IsInRole("Department Head") || User.IsInRole("Administrator") || User.IsInRole("Super Admin");
     var elevatedApprover = User.IsInRole("Administrator") || User.IsInRole("Super Admin");
     var approvalStatusColumn = Model.Columns.FirstOrDefault(x => x.Name.Equals("Approval Status", StringComparison.OrdinalIgnoreCase));
     var approverColumn = Model.Columns.FirstOrDefault(x => x.Name.Equals("Approver / Manager", StringComparison.OrdinalIgnoreCase));
     var requisitionNumberColumn = Model.Columns.FirstOrDefault(x => x.Name.Equals("Requisition No", StringComparison.OrdinalIgnoreCase));
     var requisitionStatusColumn = Model.Columns.FirstOrDefault(x => x.Name.Equals("Status", StringComparison.OrdinalIgnoreCase));
-    var renderedRequisitionActions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-    var addLabel = isRequisition ? "Add Req" : isServiceBusiness ? "Add Job" : isServiceApproval ? "Submit for Approval" : "Add Job";
+    var requisitionCommentColumn = Model.Columns.FirstOrDefault(x => x.Name.Equals("Approval Comment", StringComparison.OrdinalIgnoreCase));
+    var requisitionDecisionByColumn = Model.Columns.FirstOrDefault(x => x.Name.Equals("Decision By", StringComparison.OrdinalIgnoreCase));
+    var requisitionDecisionDateColumn = Model.Columns.FirstOrDefault(x => x.Name.Equals("Decision Date", StringComparison.OrdinalIgnoreCase));
+    var addLabel = isRequisition ? "Add Req" : isServiceBusiness ? "Add Job" : isServiceApproval ? "Add Legacy Review" : "Add Job";
     var workflowOrder = new[] { "Requisition", "Service Approval", "Service Business", "Purchase Order", "Service Logistics", "Invoice Reception" };
 }
 
@@ -33,7 +36,8 @@
         <div class="sheet-title-line"><span class="sheet-id-lg">@Model.Sheet.UniqueId</span><h1>@displaySheetName</h1></div>
         <p>@(Model.Sheet.Project != null ? $"Project: {Model.Sheet.Project.Name}" : Model.Sheet.Department != null ? $"Department: {Model.Sheet.Department.Name}" : "General sheet")</p>
     </div>
-    <div class="page-actions">
+    <div class="page-actions no-print">
+        <a class="btn btn-outline-secondary" asp-controller="Documents" asp-action="Record" asp-route-referenceType="Sheet" asp-route-referenceId="@Model.Sheet.Id" asp-route-referenceNumber="@Model.Sheet.UniqueId" asp-route-projectId="@Model.Sheet.ProjectId" asp-route-departmentId="@Model.Sheet.DepartmentId"><i class="bi bi-folder2-open"></i> Documents</a>
         @if (canManage)
         {
             <a class="btn btn-primary" asp-action="AddRow" asp-route-sheetId="@Model.Sheet.Id"><i class="bi bi-plus-lg"></i> @addLabel</a>
@@ -42,14 +46,19 @@
 </div>
 
 
-@if (Model.WorkflowSheets.Any() && Model.Sheet.ProjectId.HasValue && workflowOrder.Contains(Model.Sheet.Name, StringComparer.OrdinalIgnoreCase))
+@if (Model.Sheet.ProjectId.HasValue && (workflowOrder.Contains(Model.Sheet.Name, StringComparer.OrdinalIgnoreCase)))
 {
-    <nav class="workflow-breadcrumb" aria-label="Service workflow">
+    <nav class="workflow-breadcrumb no-print" aria-label="Service workflow">
         @for (var i = 0; i < workflowOrder.Length; i++)
         {
             var name = workflowOrder[i];
+            if (name == "Service Approval")
+            {
+                <a class="workflow-breadcrumb-step" asp-controller="ServiceApprovals" asp-action="Index" asp-route-projectId="@Model.Sheet.ProjectId"><span>@(i + 1)</span>Service Approval</a>
+                continue;
+            }
             var target = Model.WorkflowSheets.FirstOrDefault(x => x.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
-            var label = name == "Requisition" ? "Service Requisition" : name == "Service Approval" ? "Manager Approval" : name == "Service Business" ? "Job Creation" : name == "Service Logistics" ? "Logistics & Return" : name == "Invoice Reception" ? "Invoice & Payment" : name;
+            var label = name == "Requisition" ? "Requisition" : name == "Service Business" ? "Job Creation" : name == "Service Logistics" ? "Logistics & Return" : name == "Invoice Reception" ? "Invoice & Payment" : name;
             if (target != null)
             {
                 <a class="workflow-breadcrumb-step @(target.Id == Model.Sheet.Id ? "active" : "")" asp-action="Details" asp-route-id="@target.Id"><span>@(i + 1)</span>@label</a>
@@ -62,15 +71,102 @@
 {
     <div class="workflow-context-card">
         <div class="workflow-context-icon"><i class="bi bi-list-check"></i></div>
-        <div><strong>One requisition · unlimited line items</strong><p><b>Add Req</b> starts a new department-wise requisition, for example <b>QAT3D-GUN-001</b>. Use <b>Add Item</b> to add Item 1, Item 2, Item 3 and as many lines as required under that same requisition. Complete it only when all items are entered; the next GUN requisition will then be <b>QAT3D-GUN-002</b>.</p></div>
+        <div><strong>Step 1 · Requisition</strong><p>Create one requisition with all required line items. When the requisition is complete, select the responsible manager and submit it. Its status becomes <b>Waiting Approval</b>. The manager then <b>Accepts</b> or <b>Rejects</b> it with a recorded reason/comment. Only an accepted requisition can continue to Service Approval.</p></div>
     </div>
 }
 @if (isServiceApproval)
 {
     <div class="workflow-context-card approval-context-card">
         <div class="workflow-context-icon"><i class="bi bi-person-check-fill"></i></div>
-        <div><strong>Manager Approval</strong><p>Submit the requisition to the responsible PM/manager for a formal business decision. The assigned approver is notified and records an <b>Approve</b> or <b>Reject</b> decision. Job Creation remains locked until approval is granted.</p></div>
+        <div><strong>Legacy Requisition Review</strong><p>New requisition decisions are handled directly on the Requisition screen. This sheet remains available only for existing historical records.</p></div>
     </div>
+}
+
+@if (isRequisition && requisitionNumberColumn != null)
+{
+    var requisitionGroups = Model.Rows
+        .Where(r => !string.IsNullOrWhiteSpace(r.Cells.FirstOrDefault(c => c.SheetColumnId == requisitionNumberColumn.Id)?.Value))
+        .GroupBy(r => r.Cells.First(c => c.SheetColumnId == requisitionNumberColumn.Id).Value!, StringComparer.OrdinalIgnoreCase)
+        .OrderByDescending(g => g.Max(r => r.CreatedAt))
+        .ToList();
+    <section class="panel requisition-workflow-panel mb-3">
+        <div class="subsection-title"><div><h3>Requisition Approval Queue</h3><p>Approval belongs to the requisition itself. Complete the items, send the requisition to one responsible manager, then wait for Accept or Reject before creating Service Approval.</p></div></div>
+        @if (!requisitionGroups.Any())
+        {
+            <div class="empty-state-compact">No requisitions have been created yet.</div>
+        }
+        <div class="requisition-approval-list">
+        @foreach (var group in requisitionGroups)
+        {
+            var first = group.OrderBy(r => r.Id).First();
+            var status = requisitionStatusColumn == null ? "Draft" : first.Cells.FirstOrDefault(c => c.SheetColumnId == requisitionStatusColumn.Id)?.Value ?? "Draft";
+            var assignedApprover = approverColumn == null ? null : first.Cells.FirstOrDefault(c => c.SheetColumnId == approverColumn.Id)?.Value;
+            var approvalComment = requisitionCommentColumn == null ? null : first.Cells.FirstOrDefault(c => c.SheetColumnId == requisitionCommentColumn.Id)?.Value;
+            var decisionBy = requisitionDecisionByColumn == null ? null : first.Cells.FirstOrDefault(c => c.SheetColumnId == requisitionDecisionByColumn.Id)?.Value;
+            var decisionDate = requisitionDecisionDateColumn == null ? null : first.Cells.FirstOrDefault(c => c.SheetColumnId == requisitionDecisionDateColumn.Id)?.Value;
+            var waiting = status.Equals("Waiting Approval", StringComparison.OrdinalIgnoreCase);
+            var draft = string.IsNullOrWhiteSpace(status) || status.Equals("Draft", StringComparison.OrdinalIgnoreCase) || status.Equals("Pending", StringComparison.OrdinalIgnoreCase) || status.Equals("Submitted", StringComparison.OrdinalIgnoreCase);
+            var accepted = status.Equals("Approved", StringComparison.OrdinalIgnoreCase) || status.Equals("Converted to Job", StringComparison.OrdinalIgnoreCase);
+            var rejected = status.Equals("Rejected", StringComparison.OrdinalIgnoreCase);
+            var canDecideThis = canApprove && (elevatedApprover || string.IsNullOrWhiteSpace(assignedApprover) || string.Equals(assignedApprover, User.Identity?.Name, StringComparison.OrdinalIgnoreCase));
+            <article class="requisition-approval-card">
+                <div class="requisition-approval-head">
+                    <div><span class="requisition-ref">@group.Key</span><strong>@group.Count() item(s)</strong></div>
+                    <span class="requisition-status @(waiting ? "waiting" : accepted ? "approved" : rejected ? "rejected" : "draft")">@(waiting ? "Waiting Approval" : accepted ? "Accepted" : rejected ? "Rejected" : "Draft")</span>
+                </div>
+                <div class="requisition-meta">
+                    <span><b>Approver:</b> @(string.IsNullOrWhiteSpace(assignedApprover) ? "Not assigned" : assignedApprover)</span>
+                    @if (!string.IsNullOrWhiteSpace(decisionBy)) { <span><b>Decision By:</b> @decisionBy</span> }
+                    @if (!string.IsNullOrWhiteSpace(decisionDate)) { <span><b>Decision Date:</b> @decisionDate</span> }
+                </div>
+                @if (!string.IsNullOrWhiteSpace(approvalComment))
+                {
+                    <div class="requisition-decision-note"><b>@(rejected ? "Rejection Reason" : "Decision Comment"):</b> @approvalComment</div>
+                }
+                <div class="requisition-actions no-print">
+                    <a class="btn btn-sm btn-outline-secondary" asp-controller="Documents" asp-action="Record" asp-route-referenceType="Requisition" asp-route-referenceId="@group.Key" asp-route-projectId="@Model.Sheet.ProjectId"><i class="bi bi-folder2-open"></i> Documents</a>
+                    <a class="btn btn-sm btn-outline-secondary" asp-action="PrintRequisition" asp-route-sheetId="@Model.Sheet.Id" asp-route-requisitionNo="@group.Key" target="_blank"><i class="bi bi-printer"></i> Print Requisition</a>
+                    @if (draft && canManage)
+                    {
+                        <a class="btn btn-sm btn-outline-primary" asp-action="AddRow" asp-route-sheetId="@Model.Sheet.Id" asp-route-requisitionNo="@group.Key"><i class="bi bi-plus-lg"></i> Add Item</a>
+                    }
+                    @if (Model.Sheet.ProjectId.HasValue && canGenerateDocument)
+                    {
+                        <a class="btn btn-sm btn-outline-primary" asp-controller="CompanyDocuments" asp-action="Create" asp-route-requisitionNumber="@group.Key" asp-route-projectId="@Model.Sheet.ProjectId"><i class="bi bi-file-earmark-richtext"></i> Company Document</a>
+                    }
+                    @if (accepted && Model.Sheet.ProjectId.HasValue)
+                    {
+                        <a class="btn btn-sm btn-success" asp-controller="ServiceApprovals" asp-action="Create" asp-route-projectId="@Model.Sheet.ProjectId" asp-route-requisitionNo="@group.Key"><i class="bi bi-file-earmark-check"></i> Create Service Approval</a>
+                    }
+                </div>
+                @if (draft && canManage)
+                {
+                    <form asp-action="CompleteRequisition" method="post" class="requisition-submit-form no-print">
+                        <input type="hidden" name="sheetId" value="@Model.Sheet.Id"/>
+                        <input type="hidden" name="requisitionNo" value="@group.Key"/>
+                        <div><label class="form-label">Send to Manager / Approver</label><select class="form-select" name="approverEmail" required><option value="">Select responsible manager</option>@foreach(var manager in Model.ApprovalManagers){var mv=manager.Email??manager.UserName??manager.Id;var ml=string.IsNullOrWhiteSpace(manager.FullName)?mv:$"{manager.FullName} · {mv}";<option value="@mv">@ml</option>}</select></div>
+                        <button class="btn btn-primary"><i class="bi bi-send-check"></i> Submit for Approval</button>
+                    </form>
+                }
+                else if (waiting)
+                {
+                    <div class="waiting-approval-box">
+                        <div><i class="bi bi-hourglass-split"></i><strong>Waiting for decision</strong><span>@(string.IsNullOrWhiteSpace(assignedApprover) ? "An authorized approver can decide this requisition." : $"Assigned to {assignedApprover}.")</span></div>
+                        @if (canDecideThis)
+                        {
+                            <form asp-action="DecideRequisition" method="post" class="requisition-decision-form no-print">
+                                <input type="hidden" name="sheetId" value="@Model.Sheet.Id"/>
+                                <input type="hidden" name="requisitionNo" value="@group.Key"/>
+                                <textarea class="form-control" name="reason" rows="2" placeholder="Reason / comment (required when rejecting)"></textarea>
+                                <div class="action-row"><button class="btn btn-success" name="approve" value="true"><i class="bi bi-check2-circle"></i> Accept</button><button class="btn btn-outline-danger" name="approve" value="false"><i class="bi bi-x-circle"></i> Reject</button></div>
+                            </form>
+                        }
+                    </div>
+                }
+            </article>
+        }
+        </div>
+    </section>
 }
 
 <section class="panel mb-3">
@@ -83,7 +179,7 @@
 <section class="panel p-0 overflow-hidden">
     <div class="dynamic-sheet-wrap">
         <table class="table dynamic-sheet-table mb-0">
-            <thead><tr><th class="sticky-id">Unique ID</th>@foreach(var col in Model.Columns){<th>@col.Name <small>@col.ColumnType</small></th>}<th class="sheet-actions-col @(isServiceApproval ? "approval-actions-col" : "")">@(isServiceApproval ? "PM Decision / Actions" : "Actions")</th></tr></thead>
+            <thead><tr><th class="sticky-id">Unique ID</th>@foreach(var col in Model.Columns){<th>@col.Name <small>@col.ColumnType</small></th>}<th class="sheet-actions-col @(isServiceApproval ? "approval-actions-col" : "")">@(isServiceApproval ? "Decision / Actions" : "Actions")</th></tr></thead>
             <tbody>
             @if (!Model.Rows.Any())
             {
@@ -93,11 +189,6 @@
             {
                 var approvalStatus = approvalStatusColumn == null ? null : row.Cells.FirstOrDefault(x => x.SheetColumnId == approvalStatusColumn.Id)?.Value;
                 var assignedApprover = approverColumn == null ? null : row.Cells.FirstOrDefault(x => x.SheetColumnId == approverColumn.Id)?.Value;
-                var requisitionNo = requisitionNumberColumn == null ? null : row.Cells.FirstOrDefault(x => x.SheetColumnId == requisitionNumberColumn.Id)?.Value;
-                var requisitionStatus = requisitionStatusColumn == null ? null : row.Cells.FirstOrDefault(x => x.SheetColumnId == requisitionStatusColumn.Id)?.Value;
-                var showCompleteRequisition = isRequisition && canManage && !string.IsNullOrWhiteSpace(requisitionNo)
-                    && (string.IsNullOrWhiteSpace(requisitionStatus) || requisitionStatus.Equals("Pending", StringComparison.OrdinalIgnoreCase))
-                    && renderedRequisitionActions.Add(requisitionNo);
                 var canApproveThisRow = canApprove && (elevatedApprover || string.IsNullOrWhiteSpace(assignedApprover) || string.Equals(assignedApprover, User.Identity?.Name, StringComparison.OrdinalIgnoreCase));
                 <tr>
                     <td class="sticky-id"><span class="row-id-chip">@row.UniqueId</span></td>
@@ -133,9 +224,9 @@
                         {
                             <form asp-action="ApproveService" method="post" class="approval-inline-form">
                                 <input type="hidden" name="id" value="@row.Id"/>
-                                <input class="form-control form-control-sm" name="comment" placeholder="PM / manager decision comment" />
+                                <input class="form-control form-control-sm" name="comment" placeholder="Approval / rejection comment" />
                                 <div class="d-flex gap-1 mt-1">
-                                    <button class="btn btn-sm btn-success" name="approve" value="true"><i class="bi bi-check2"></i> PM Approve</button>
+                                    <button class="btn btn-sm btn-success" name="approve" value="true"><i class="bi bi-check2"></i> Approve</button>
                                     <button class="btn btn-sm btn-outline-danger" name="approve" value="false"><i class="bi bi-x-lg"></i> Reject</button>
                                 </div>
                             </form>
@@ -148,20 +239,16 @@
                         {
                             <span class="decision-assigned"><i class="bi bi-person-lock"></i> Assigned to @assignedApprover</span>
                         }
-                        @if (showCompleteRequisition)
+                        @if (!isRequisition)
                         {
-                            <div class="d-flex flex-wrap gap-1 mb-1">
-                                <a class="btn btn-sm btn-outline-primary" asp-action="AddRow" asp-route-sheetId="@Model.Sheet.Id" asp-route-requisitionNo="@requisitionNo"><i class="bi bi-plus-lg"></i> Add Item</a>
-                                <form asp-action="CompleteRequisition" method="post" class="d-inline" onsubmit="return confirm('Complete this requisition? You will not be able to add more items after completion.');">
-                                    <input type="hidden" name="sheetId" value="@Model.Sheet.Id"/>
-                                    <input type="hidden" name="requisitionNo" value="@requisitionNo"/>
-                                    <button class="btn btn-sm btn-success"><i class="bi bi-check2-circle"></i> Complete Req</button>
-                                </form>
+                            <div class="d-flex flex-wrap gap-1 mt-1 no-print">
+                                <a class="btn btn-sm btn-outline-secondary" asp-controller="Documents" asp-action="Record" asp-route-referenceType="SheetRow" asp-route-referenceId="@row.Id" title="Record documents"><i class="bi bi-paperclip"></i></a>
+                                <a class="btn btn-sm btn-outline-secondary" asp-action="PrintRow" asp-route-id="@row.Id" target="_blank" title="Print this record only"><i class="bi bi-printer"></i></a>
                             </div>
                         }
                         @if (canManage)
                         {
-                            <div class="d-flex gap-1 mt-1">
+                            <div class="d-flex gap-1 mt-1 no-print">
                                 <a class="btn btn-sm btn-outline-primary" asp-action="EditRow" asp-route-id="@row.Id" title="Edit"><i class="bi bi-pencil"></i></a>
                                 <form asp-action="DeleteRow" method="post" class="d-inline" onsubmit="return confirm('Delete this record?');"><input type="hidden" name="id" value="@row.Id"/><button class="btn btn-sm btn-outline-danger" title="Delete"><i class="bi bi-trash"></i></button></form>
                             </div>
@@ -176,7 +263,7 @@
 
 @if (canManage)
 {
-<section class="panel mt-3 sheet-settings-compact">
+<section class="panel mt-3 sheet-settings-compact no-print">
     <div class="panel-head"><div><h3>Sheet Settings</h3><p>Column editing is now available from <strong>Column Management</strong> in the sidebar.</p></div></div>
     <div class="sheet-settings-row">
         <form asp-action="Rename" method="post" class="d-flex gap-2 flex-grow-1"><input type="hidden" name="id" value="@Model.Sheet.Id"/><input class="form-control" name="name" value="@Model.Sheet.Name" required/><button class="btn btn-outline-primary">Rename</button></form>
@@ -185,5 +272,3 @@
 </section>
 }
 </div>
-
-

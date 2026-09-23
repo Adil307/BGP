@@ -36,10 +36,13 @@
             @if (await PermissionService.HasPermissionAsync(User,"Dashboard.View")) { <a class="@(ctrl=="Workspace"?"active":"")" asp-controller="Workspace" asp-action="Index"><i class="bi bi-globe2"></i>Countries & Projects</a> }
             @if (await PermissionService.HasPermissionAsync(User,"Dashboard.View")) { <a class="@(ctrl=="Dashboard"?"active":"")" asp-controller="Dashboard" asp-action="Index"><i class="bi bi-grid-fill"></i>Executive Dashboard</a> }
             @if (await PermissionService.HasPermissionAsync(User,"Sheets.View")) { <a class="@(ctrl=="Sheets" && action!="Columns"?"active":"")" asp-controller="Sheets" asp-action="Index"><i class="bi bi-diagram-3-fill"></i>Service Operations</a> }
+            @if (await PermissionService.HasPermissionAsync(User,"ServiceApprovals.View")) { <a class="@(ctrl=="ServiceApprovals"?"active":"")" asp-controller="ServiceApprovals" asp-action="Index"><i class="bi bi-file-earmark-check"></i>Service Approvals</a> }
             @if (await PermissionService.HasPermissionAsync(User,"Jobs.View")) { <a class="@(ctrl=="Jobs"?"active":"")" asp-controller="Jobs" asp-action="Index"><i class="bi bi-clipboard2-data"></i>Jobs Register</a> }
             @if (await PermissionService.HasPermissionAsync(User,"Inventory.View")) { <a class="@(ctrl=="Inventory"?"active":"")" asp-controller="Inventory" asp-action="Index"><i class="bi bi-box-seam"></i>Stock Inventory</a> }
             @if (await PermissionService.HasPermissionAsync(User,"Inventory.Requests")) { <a class="@(ctrl=="InventoryRequests"?"active":"")" asp-controller="InventoryRequests" asp-action="Index"><i class="bi bi-box-arrow-in-down"></i>Inventory Requests</a> }
             @if (await PermissionService.HasPermissionAsync(User,"Reports.View")) { <a class="@(ctrl=="Reports"?"active":"")" asp-controller="Reports" asp-action="Index"><i class="bi bi-bar-chart"></i>Reports</a> }
+            @if (await PermissionService.HasPermissionAsync(User,"Documents.View")) { <a class="@(ctrl=="CompanyDocuments"?"active":"")" asp-controller="CompanyDocuments" asp-action="Index"><i class="bi bi-file-earmark-richtext"></i>Company Documents</a> }
+            @if (await PermissionService.HasPermissionAsync(User,"Documents.View")) { <a class="@(ctrl=="Documents"?"active":"")" asp-controller="Documents" asp-action="Index"><i class="bi bi-paperclip"></i>Attachments</a> }
 
             <div class="side-nav-label">Administration</div>
             @if (await PermissionService.HasPermissionAsync(User,"Sheets.Manage")) { <a class="@(ctrl=="Sheets" && action=="Columns"?"active":"")" asp-controller="Sheets" asp-action="Columns"><i class="bi bi-layout-three-columns"></i>Column Management</a> }
@@ -48,10 +51,11 @@
             @if (await PermissionService.HasPermissionAsync(User,"Users.View")) { <a class="@(ctrl=="Users"?"active":"")" asp-controller="Users" asp-action="Index"><i class="bi bi-people"></i>Employees / Users</a> }
             @if (await PermissionService.HasPermissionAsync(User,"Permissions.Manage")) { <a class="@(ctrl=="Permissions"?"active":"")" asp-controller="Permissions" asp-action="Index"><i class="bi bi-shield-lock"></i>Roles & Permissions</a> }
             @if (await PermissionService.HasPermissionAsync(User,"MasterData.Manage")) { <a class="@(ctrl=="MasterData"?"active":"")" asp-controller="MasterData" asp-action="Index" asp-route-type="currencies"><i class="bi bi-database-gear"></i>Master Data</a> }
+            @if (await PermissionService.HasPermissionAsync(User,"DocumentTemplates.Manage")) { <a class="@(ctrl=="DocumentTemplates"?"active":"")" asp-controller="DocumentTemplates" asp-action="Index"><i class="bi bi-layout-text-window"></i>Company Templates</a> }
             @if (await PermissionService.HasPermissionAsync(User,"Audit.View")) { <a class="@(ctrl=="AuditLogs"?"active":"")" asp-controller="AuditLogs" asp-action="Index"><i class="bi bi-journal-text"></i>Audit Log</a> }
             @if (await PermissionService.HasPermissionAsync(User,"Settings.Manage")) { <a class="@(ctrl=="Settings"?"active":"")" asp-controller="Settings" asp-action="Index"><i class="bi bi-gear"></i>Settings</a> }
         </nav>
-        <div class="sidebar-footer"><strong>BGP Management System</strong><br/><span>Version 2.3</span><small>System developed by Muhammad Adil</small></div>
+        <div class="sidebar-footer"><strong>BGP Management System</strong><br/><span>Version 3.1</span><small>System developed by Muhammad Adil</small></div>
     </aside>
     <header class="topbar">
         <button class="icon-btn" id="sidebarToggle" type="button" aria-label="Toggle navigation menu" aria-controls="sidebar" aria-expanded="true"><i class="bi bi-list"></i></button>

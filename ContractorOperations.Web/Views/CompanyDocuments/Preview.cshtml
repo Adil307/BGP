@@ -1,0 +1,3 @@
+@{ var document=(GeneratedCompanyDocument)ViewBag.Document; ViewData["Title"]=$"Preview - {document.Title}"; }
+<div class="page-heading no-print"><div><h1>@document.Title</h1><p>Record-only company document preview. Status: <strong>@document.Status</strong>.</p></div><div class="page-actions"><a class="btn btn-outline-secondary" asp-action="Details" asp-route-id="@document.Id">Back</a><a class="btn btn-primary" asp-action="Print" asp-route-id="@document.Id" target="_blank"><i class="bi bi-printer"></i> Print / PDF</a></div></div>
+<div class="print-document-shell"><article class="print-document">@Html.Raw((string)ViewBag.RenderedHtml)</article></div>

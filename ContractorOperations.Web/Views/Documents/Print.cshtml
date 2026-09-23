@@ -1,0 +1,67 @@
+@model DocumentRecord
+@{
+    Layout = null;
+    var inline = (bool)ViewBag.CanInline;
+    var ext = System.IO.Path.GetExtension(Model.OriginalFileName).ToLowerInvariant();
+    var isPdf = ext == ".pdf";
+    var isImage = ext is ".jpg" or ".jpeg" or ".png";
+}
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>@Model.OriginalFileName</title>
+    <style>
+        @@page { size: auto; margin: 8mm; }
+        * { box-sizing: border-box; }
+        html, body { margin: 0; padding: 0; background: #fff; }
+        body { font-family: Arial, sans-serif; color: #111; }
+        .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid #ddd; background: #fff; }
+        .toolbar button, .toolbar a { padding: 8px 13px; border: 1px solid #aaa; border-radius: 5px; background: #fff; color: #111; text-decoration: none; cursor: pointer; }
+        .print-content { width: 100%; background: #fff; }
+        .pdf-frame { display: block; width: 100%; height: calc(100vh - 58px); border: 0; background: #fff; }
+        .image-wrap { min-height: calc(100vh - 58px); display: flex; align-items: flex-start; justify-content: center; padding: 8mm; }
+        .image-wrap img { max-width: 100%; height: auto; object-fit: contain; }
+        .native-file { max-width: 760px; margin: 28px auto; border: 1px solid #bbb; padding: 28px; text-align: center; }
+        .native-file h1 { font-size: 18px; margin-top: 0; }
+        @@media print {
+            .toolbar { display: none !important; }
+            .image-wrap { min-height: 0; padding: 0; }
+            .native-file { margin: 0; border: 0; }
+            .pdf-frame { height: 100vh; }
+        }
+    </style>
+</head>
+<body>
+<div class="toolbar">
+    <strong>@Model.OriginalFileName</strong>
+    <div>
+        <a href="@Url.Action("Download", new { id = Model.Id })">Download</a>
+        <button type="button" onclick="printDocument()">Print document only</button>
+    </div>
+</div>
+<main class="print-content">
+@if (inline && isPdf)
+{
+    <iframe id="pdfFrame" class="pdf-frame" src="@Url.Action("Preview", new { id = Model.Id })" title="@Model.OriginalFileName"></iframe>
+}
+else if (inline && isImage)
+{
+    <div class="image-wrap"><img src="@Url.Action("Preview", new { id = Model.Id })" alt="@Model.OriginalFileName" /></div>
+}
+else
+{
+    <div class="native-file"><h1>@Model.OriginalFileName</h1><p>This document type should be printed from its native application so the original page layout is preserved.</p><a href="@Url.Action("Download", new { id = Model.Id })">Download document</a></div>
+}
+</main>
+<script>
+function printDocument(){
+    const frame = document.getElementById('pdfFrame');
+    if(frame){
+        try { frame.contentWindow.focus(); frame.contentWindow.print(); return; } catch(e) { }
+    }
+    window.print();
+}
+</script>
+</body>
+</html>

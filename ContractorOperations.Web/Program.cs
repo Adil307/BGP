@@ -38,6 +38,7 @@ builder.Services.AddScoped<IJobNumberService, JobNumberService>();
 builder.Services.AddScoped<IStockService, StockService>();
 builder.Services.AddScoped<IBusinessIdService, BusinessIdService>();
 builder.Services.AddScoped<IProjectSetupService, ProjectSetupService>();
+builder.Services.AddScoped<IDocumentRenderingService, DocumentRenderingService>();
 
 var app = builder.Build();
 

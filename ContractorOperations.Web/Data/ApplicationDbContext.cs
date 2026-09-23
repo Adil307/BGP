@@ -36,6 +36,16 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<SheetCell> SheetCells => Set<SheetCell>();
     public DbSet<InventoryRequest> InventoryRequests => Set<InventoryRequest>();
     public DbSet<WorkflowNotification> WorkflowNotifications => Set<WorkflowNotification>();
+    public DbSet<DocumentRecord> DocumentRecords => Set<DocumentRecord>();
+    public DbSet<DocumentTemplate> DocumentTemplates => Set<DocumentTemplate>();
+    public DbSet<UserSignature> UserSignatures => Set<UserSignature>();
+    public DbSet<GeneratedCompanyDocument> GeneratedCompanyDocuments => Set<GeneratedCompanyDocument>();
+    public DbSet<GeneratedDocumentSignature> GeneratedDocumentSignatures => Set<GeneratedDocumentSignature>();
+    public DbSet<OfficialDocumentAsset> OfficialDocumentAssets => Set<OfficialDocumentAsset>();
+    public DbSet<DocumentAssetUsage> DocumentAssetUsages => Set<DocumentAssetUsage>();
+    public DbSet<ServiceApproval> ServiceApprovals => Set<ServiceApproval>();
+    public DbSet<ServiceApprovalStage> ServiceApprovalStages => Set<ServiceApprovalStage>();
+    public DbSet<ReleasedItemNumber> ReleasedItemNumbers => Set<ReleasedItemNumber>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -52,6 +62,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
         builder.Entity<Job>().HasIndex(x => x.JobNumber).IsUnique();
         builder.Entity<Job>().HasIndex(x => x.DeduplicationKey).IsUnique().HasFilter("[IsDeleted] = 0");
         builder.Entity<JobLine>().HasIndex(x => new { x.JobId, x.Description, x.UnitId, x.CurrencyId, x.Quantity, x.UnitRate }).IsUnique();
+        builder.Entity<JobLine>().HasIndex(x => new { x.JobId, x.ItemSerialNumber }).IsUnique().HasFilter("[ItemSerialNumber] IS NOT NULL");
         builder.Entity<Job>().HasQueryFilter(x => !x.IsDeleted);
         // JobLine is the required dependent of Job. Apply the same soft-delete
         // visibility rule so EF Core does not return orphaned line items when a
@@ -75,6 +86,20 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
         builder.Entity<SheetCell>().HasIndex(x => new { x.SheetRowId, x.SheetColumnId }).IsUnique();
         builder.Entity<InventoryRequest>().HasIndex(x => x.RequestNumber).IsUnique();
         builder.Entity<WorkflowNotification>().HasIndex(x => new { x.UserId, x.IsRead, x.CreatedAt });
+        builder.Entity<DocumentRecord>().HasIndex(x => new { x.ReferenceType, x.ReferenceId, x.IsDeleted });
+        builder.Entity<DocumentRecord>().HasIndex(x => x.RequisitionNumber);
+        builder.Entity<DocumentRecord>().HasIndex(x => x.JobNumber);
+        builder.Entity<DocumentRecord>().HasIndex(x => x.ServiceApprovalNumber);
+        builder.Entity<DocumentTemplate>().HasIndex(x => x.Name);
+        builder.Entity<UserSignature>().HasIndex(x => x.UserId).IsUnique().HasFilter("[IsActive] = 1");
+        builder.Entity<GeneratedCompanyDocument>().HasIndex(x => new { x.ReferenceType, x.ReferenceId, x.Status });
+        builder.Entity<GeneratedCompanyDocument>().HasIndex(x => x.CreatedAt);
+        builder.Entity<GeneratedDocumentSignature>().HasIndex(x => new { x.GeneratedCompanyDocumentId, x.SlotNumber }).IsUnique();
+        builder.Entity<OfficialDocumentAsset>().HasIndex(x => x.AssetType).IsUnique().HasFilter("[IsActive] = 1");
+        builder.Entity<ServiceApproval>().HasIndex(x => x.ApprovalNumber).IsUnique().HasFilter("[ApprovalNumber] IS NOT NULL");
+        builder.Entity<ServiceApproval>().HasIndex(x => new { x.ProjectId, x.RequisitionNumber });
+        builder.Entity<ServiceApprovalStage>().HasIndex(x => new { x.ServiceApprovalId, x.StageNumber }).IsUnique();
+        builder.Entity<ReleasedItemNumber>().HasIndex(x => new { x.ProjectSheetId, x.RequisitionNumber, x.ItemNumber }).IsUnique();
 
         builder.Entity<RolePermission>().HasKey(x => new { x.RoleId, x.PermissionId });
         builder.Entity<UserPermission>().HasKey(x => new { x.UserId, x.PermissionId });
@@ -133,6 +158,34 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
             .HasOne(x => x.ApprovedByUser).WithMany().HasForeignKey(x => x.ApprovedByUserId).OnDelete(DeleteBehavior.NoAction);
         builder.Entity<WorkflowNotification>()
             .HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        builder.Entity<ServiceApproval>()
+            .HasOne(x => x.Project).WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.NoAction);
+        builder.Entity<ServiceApproval>()
+            .HasOne(x => x.Department).WithMany().HasForeignKey(x => x.DepartmentId).OnDelete(DeleteBehavior.NoAction);
+        builder.Entity<ServiceApproval>()
+            .HasOne(x => x.Currency).WithMany().HasForeignKey(x => x.CurrencyId).OnDelete(DeleteBehavior.NoAction);
+        builder.Entity<ServiceApprovalStage>()
+            .HasOne(x => x.ServiceApproval).WithMany(x => x.Stages).HasForeignKey(x => x.ServiceApprovalId).OnDelete(DeleteBehavior.Cascade);
+        builder.Entity<ServiceApprovalStage>()
+            .HasOne(x => x.UserSignature).WithMany().HasForeignKey(x => x.UserSignatureId).OnDelete(DeleteBehavior.NoAction);
+        builder.Entity<UserSignature>()
+            .HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.NoAction);
+        builder.Entity<GeneratedCompanyDocument>()
+            .HasOne(x => x.DocumentTemplate).WithMany().HasForeignKey(x => x.DocumentTemplateId).OnDelete(DeleteBehavior.NoAction);
+        builder.Entity<GeneratedCompanyDocument>()
+            .HasOne<Project>().WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.NoAction);
+        builder.Entity<GeneratedCompanyDocument>()
+            .HasOne<Department>().WithMany().HasForeignKey(x => x.DepartmentId).OnDelete(DeleteBehavior.NoAction);
+        builder.Entity<GeneratedCompanyDocument>()
+            .HasOne<ServiceApproval>().WithMany().HasForeignKey(x => x.ServiceApprovalId).OnDelete(DeleteBehavior.NoAction);
+        builder.Entity<GeneratedCompanyDocument>()
+            .HasOne<Job>().WithMany().HasForeignKey(x => x.JobId).OnDelete(DeleteBehavior.NoAction);
+        builder.Entity<GeneratedDocumentSignature>()
+            .HasOne(x => x.GeneratedCompanyDocument).WithMany(x => x.Signatures).HasForeignKey(x => x.GeneratedCompanyDocumentId).OnDelete(DeleteBehavior.Cascade);
+        builder.Entity<GeneratedDocumentSignature>()
+            .HasOne(x => x.UserSignature).WithMany().HasForeignKey(x => x.UserSignatureId).OnDelete(DeleteBehavior.NoAction);
+        builder.Entity<DocumentAssetUsage>()
+            .HasOne(x => x.OfficialDocumentAsset).WithMany().HasForeignKey(x => x.OfficialDocumentAssetId).OnDelete(DeleteBehavior.NoAction);
 
         builder.Entity<JobLine>().Property(x => x.Quantity).HasPrecision(18, 3);
         builder.Entity<JobLine>().Property(x => x.UnitRate).HasPrecision(18, 2);
@@ -144,5 +197,6 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
         builder.Entity<ProjectWorkspace>().Property(x => x.Budget).HasPrecision(18, 2);
         builder.Entity<InventoryRequest>().Property(x => x.Quantity).HasPrecision(18, 3);
         builder.Entity<InventoryRequest>().Property(x => x.ApprovedQuantity).HasPrecision(18, 3);
+        builder.Entity<ServiceApproval>().Property(x => x.ServiceAmount).HasPrecision(18, 2);
     }
 }

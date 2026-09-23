@@ -1,0 +1,89 @@
+@model SheetDetailsVm
+@{
+    Layout = null;
+    var requisitionNo = Model.Search ?? string.Empty;
+    var firstRow = Model.Rows.OrderBy(x => x.Id).FirstOrDefault();
+    string? CellValue(string name)
+    {
+        var col = Model.Columns.FirstOrDefault(x => x.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+        return col == null || firstRow == null ? null : firstRow.Cells.FirstOrDefault(x => x.SheetColumnId == col.Id)?.Value;
+    }
+    var headerNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "Requisition No", "Department", "Request Date", "Date", "Requested By", "Requester",
+        "Status", "Approver / Manager", "Approval Comment", "Decision By", "Decision Date"
+    };
+    var itemColumns = Model.Columns.Where(x => !headerNames.Contains(x.Name)).ToList();
+    var status = CellValue("Status") ?? "Draft";
+    var requestDate = CellValue("Request Date") ?? CellValue("Date") ?? firstRow?.CreatedAt.ToString("dd MMM yyyy");
+    var requester = CellValue("Requested By") ?? CellValue("Requester");
+    var approver = CellValue("Approver / Manager");
+    var decisionBy = CellValue("Decision By");
+    var decisionDate = CellValue("Decision Date");
+    var decisionComment = CellValue("Approval Comment");
+}
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Requisition @requisitionNo</title>
+    <style>
+        *{box-sizing:border-box} body{margin:0;background:#eef1f5;color:#182230;font-family:Arial,Helvetica,sans-serif;font-size:12px}.toolbar{max-width:1100px;margin:18px auto 0;display:flex;justify-content:flex-end;gap:8px}.toolbar button{border:1px solid #cbd5e1;background:#fff;border-radius:6px;padding:8px 13px;font-weight:700;cursor:pointer}.page{width:min(1100px,calc(100% - 32px));margin:12px auto 30px;background:#fff;padding:28px 32px;box-shadow:0 2px 14px rgba(0,0,0,.08)}.head{display:grid;grid-template-columns:90px 1fr auto;gap:16px;align-items:center;border-bottom:2px solid #26384d;padding-bottom:14px}.logo{width:82px;max-height:62px;object-fit:contain}.head h1{margin:0;font-size:21px;letter-spacing:.3px}.head p{margin:4px 0 0;color:#5b6775}.ref{text-align:right}.ref strong{display:block;font-size:16px}.meta{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid #d8dee7;border-bottom:0;margin-top:18px}.meta>div{padding:9px 10px;border-right:1px solid #d8dee7;border-bottom:1px solid #d8dee7;min-height:48px}.meta>div:nth-child(4n){border-right:0}.label{display:block;color:#66758a;font-size:9px;text-transform:uppercase;letter-spacing:.55px;margin-bottom:4px}.value{font-weight:700;overflow-wrap:anywhere}.section-title{font-size:12px;margin:18px 0 7px;text-transform:uppercase;letter-spacing:.5px}.table-wrap{overflow:visible}table{width:100%;border-collapse:collapse;font-size:10px}th,td{border:1px solid #cfd6df;padding:7px 6px;vertical-align:top;text-align:left;overflow-wrap:anywhere}th{background:#f3f5f8;font-size:9px;text-transform:uppercase;letter-spacing:.3px}.serial{width:44px;text-align:center}.decision{margin-top:16px;border:1px solid #d8dee7;padding:12px;display:grid;grid-template-columns:1fr 1fr;gap:10px}.decision .comment{grid-column:1/-1}.foot{margin-top:24px;padding-top:9px;border-top:1px solid #d8dee7;color:#738094;font-size:9px;display:flex;justify-content:space-between}@@media(max-width:720px){.page{width:100%;margin:0;box-shadow:none;padding:18px}.head{grid-template-columns:70px 1fr}.ref{grid-column:1/-1;text-align:left}.meta{grid-template-columns:1fr 1fr}.meta>div:nth-child(4n){border-right:1px solid #d8dee7}.meta>div:nth-child(2n){border-right:0}.decision{grid-template-columns:1fr}}@@media print{@@page{size:A4 landscape;margin:10mm}body{background:#fff}.no-print{display:none!important}.page{width:auto;margin:0;padding:0;box-shadow:none}.head{break-inside:avoid}.meta,.decision{break-inside:avoid}thead{display:table-header-group}tr{break-inside:avoid}.foot{position:relative}}
+    </style>
+</head>
+<body>
+<div class="toolbar no-print"><button type="button" onclick="window.print()">Print / Save PDF</button></div>
+<main class="page">
+    <header class="head">
+        <img class="logo" src="/images/bgp-logo.jpeg" alt="BGP" />
+        <div><h1>Service Requisition</h1><p>@(Model.Sheet.Project?.Name ?? "BGP Project")</p></div>
+        <div class="ref"><span class="label">Requisition No.</span><strong>@requisitionNo</strong><span>@status</span></div>
+    </header>
+
+    <section class="meta">
+        <div><span class="label">Project</span><span class="value">@(Model.Sheet.Project?.Name ?? "—")</span></div>
+        <div><span class="label">Department</span><span class="value">@(CellValue("Department") ?? Model.Sheet.Department?.Name ?? "—")</span></div>
+        <div><span class="label">Request Date</span><span class="value">@(requestDate ?? "—")</span></div>
+        <div><span class="label">Requested By</span><span class="value">@(requester ?? "—")</span></div>
+        <div><span class="label">Status</span><span class="value">@status</span></div>
+        <div><span class="label">Approver / Manager</span><span class="value">@(approver ?? "—")</span></div>
+        <div><span class="label">Decision By</span><span class="value">@(decisionBy ?? "—")</span></div>
+        <div><span class="label">Decision Date</span><span class="value">@(decisionDate ?? "—")</span></div>
+    </section>
+
+    <h2 class="section-title">Requisition Items</h2>
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th class="serial">#</th>@foreach (var col in itemColumns){<th>@col.Name</th>}</tr></thead>
+            <tbody>
+            @{ var line = 0; }
+            @foreach (var row in Model.Rows.OrderBy(x => x.Id))
+            {
+                line++;
+                <tr>
+                    <td class="serial">@line</td>
+                    @foreach (var col in itemColumns)
+                    {
+                        var value = row.Cells.FirstOrDefault(x => x.SheetColumnId == col.Id)?.Value;
+                        <td>@(string.IsNullOrWhiteSpace(value) ? "—" : value)</td>
+                    }
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(decisionBy) || !string.IsNullOrWhiteSpace(decisionComment))
+    {
+        <section class="decision">
+            <div><span class="label">Decision By</span><span class="value">@(decisionBy ?? "—")</span></div>
+            <div><span class="label">Decision Date</span><span class="value">@(decisionDate ?? "—")</span></div>
+            <div class="comment"><span class="label">Decision / Rejection Reason</span><span>@(decisionComment ?? "—")</span></div>
+        </section>
+    }
+
+    <footer class="foot"><span>BGP Contractor Operations System</span><span>Printed @DateTime.Now.ToString("dd MMM yyyy HH:mm")</span></footer>
+</main>
+</body>
+</html>

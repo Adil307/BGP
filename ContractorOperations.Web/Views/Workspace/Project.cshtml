@@ -5,14 +5,16 @@
     var canManageProject = await PermissionService.HasPermissionAsync(User, "Projects.Manage");
     var canManageSheets = await PermissionService.HasPermissionAsync(User, "Sheets.Manage");
     var canRequestInventory = await PermissionService.HasPermissionAsync(User, "Inventory.Requests");
-    var workflowNames = new[] { "Requisition", "Service Approval", "Service Business", "Purchase Order", "Service Logistics", "Invoice Reception" };
-    var workflowSheets = Model.Sheets.Where(x => workflowNames.Contains(x.Name, StringComparer.OrdinalIgnoreCase)).OrderBy(x => Array.FindIndex(workflowNames, n => n.Equals(x.Name, StringComparison.OrdinalIgnoreCase))).ToList();
-    var otherSheets = Model.Sheets.Where(x => !workflowNames.Contains(x.Name, StringComparer.OrdinalIgnoreCase)).ToList();
+    var coreSheetNames = new[] { "Requisition", "Service Business", "Purchase Order", "Service Logistics", "Invoice Reception" };
+    var requisitionSheet = Model.Sheets.FirstOrDefault(x => x.Name.Equals("Requisition", StringComparison.OrdinalIgnoreCase));
+    var downstreamSheets = Model.Sheets.Where(x => coreSheetNames.Skip(1).Contains(x.Name, StringComparer.OrdinalIgnoreCase))
+        .OrderBy(x => Array.FindIndex(coreSheetNames, n => n.Equals(x.Name, StringComparison.OrdinalIgnoreCase))).ToList();
+    var otherSheets = Model.Sheets.Where(x => !coreSheetNames.Contains(x.Name, StringComparer.OrdinalIgnoreCase)
+        && !x.Name.Equals("Requisition Approval", StringComparison.OrdinalIgnoreCase)).ToList();
     var workflowDescriptions = new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase)
     {
-        ["Requisition"] = "Create the service requisition with scope, quantity and required date.",
-        ["Service Approval"] = "Assigned PM/manager reviews the requisition and records the formal decision.",
-        ["Service Business"] = "Create the approved job and initiate vendor quotation follow-up.",
+        ["Requisition"] = "Create the requisition, add all items, then submit it to the assigned manager for Accept or Reject.",
+        ["Service Business"] = "Create the approved service job and initiate vendor quotation follow-up.",
         ["Purchase Order"] = "Issue PO to the selected vendor/subcontractor.",
         ["Service Logistics"] = "Track delivery/export, service and received-back/import.",
         ["Invoice Reception"] = "Receive invoice and follow payment through closure."
@@ -51,24 +53,34 @@
 
 <section class="panel mt-3">
     <div class="panel-head sheet-section-head">
-        <div><h3>Service Procurement &amp; Job Lifecycle</h3><p>Requisition → Manager Approval → Job Creation → Purchase Order → Logistics &amp; Return → Invoice &amp; Payment.</p></div>
+        <div><h3>Service Procurement &amp; Job Lifecycle</h3><p>Requisition (including manager decision) → Service Approval → Job Creation → Purchase Order → Logistics &amp; Return → Invoice &amp; Payment.</p></div>
         @if (canManageSheets)
         {
             <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addSheetModal"><i class="bi bi-plus-lg"></i> Add Sheet</button>
         }
     </div>
     <div class="workflow-step-grid">
-    @for (var i = 0; i < workflowSheets.Count; i++)
-    {
-        var sheet = workflowSheets[i];
-        var label = sheet.Name == "Requisition" ? "Service Requisition" : sheet.Name == "Service Approval" ? "Manager Approval" : sheet.Name == "Service Business" ? "Job Creation" : sheet.Name == "Service Logistics" ? "Logistics & Return" : sheet.Name == "Invoice Reception" ? "Invoice & Payment" : sheet.Name;
-        var rowCount = Model.SheetRowCounts.TryGetValue(sheet.Id, out var records) ? records : 0;
-        <a class="workflow-step-card" asp-controller="Sheets" asp-action="Details" asp-route-id="@sheet.Id">
-            <span class="workflow-step-no">@(i + 1)</span>
-            <div><strong>@label</strong><small>@workflowDescriptions.GetValueOrDefault(sheet.Name)</small><em>@rowCount record(s)</em></div>
-            <i class="bi bi-arrow-right"></i>
+        @if (requisitionSheet != null)
+        {
+            var reqCount = Model.SheetRowCounts.TryGetValue(requisitionSheet.Id, out var reqRecords) ? reqRecords : 0;
+            <a class="workflow-step-card" asp-controller="Sheets" asp-action="Details" asp-route-id="@requisitionSheet.Id">
+                <span class="workflow-step-no">1</span><div><strong>Requisition</strong><small>@workflowDescriptions["Requisition"]</small><em>@reqCount item row(s)</em></div><i class="bi bi-arrow-right"></i>
+            </a>
+        }
+        <a class="workflow-step-card" asp-controller="ServiceApprovals" asp-action="Index" asp-route-projectId="@Model.Project.Id">
+            <span class="workflow-step-no">2</span><div><strong>Service Approval</strong><small>Available only after the requisition has been accepted. Track amount, documents and sequential signatures.</small><em>Open approval register</em></div><i class="bi bi-arrow-right"></i>
         </a>
-    }
+        @for (var i = 0; i < downstreamSheets.Count; i++)
+        {
+            var sheet = downstreamSheets[i];
+            var label = sheet.Name == "Service Business" ? "Job Creation" : sheet.Name == "Service Logistics" ? "Logistics & Return" : sheet.Name == "Invoice Reception" ? "Invoice & Payment" : sheet.Name;
+            var rowCount = Model.SheetRowCounts.TryGetValue(sheet.Id, out var records) ? records : 0;
+            <a class="workflow-step-card" asp-controller="Sheets" asp-action="Details" asp-route-id="@sheet.Id">
+                <span class="workflow-step-no">@(i + 3)</span>
+                <div><strong>@label</strong><small>@workflowDescriptions.GetValueOrDefault(sheet.Name)</small><em>@rowCount record(s)</em></div>
+                <i class="bi bi-arrow-right"></i>
+            </a>
+        }
     </div>
 </section>
 

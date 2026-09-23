@@ -1,0 +1,10 @@
+@model CompanyDocumentEditVm
+@{ ViewData["Title"]="Edit Company Document"; string Label(int i)=>Model.EditableFieldLabels.Length>=i?Model.EditableFieldLabels[i-1]:$"Editable Text {i}"; }
+<div class="page-heading"><div><h1>Edit Draft</h1><p>Only safe text fields are editable. The controlled master layout, linked data placeholders and signature positions remain protected.</p></div><a class="btn btn-outline-secondary" asp-action="Details" asp-route-id="@Model.Id">Back</a></div>
+<form method="post"><input type="hidden" asp-for="Id"/><div asp-validation-summary="ModelOnly" class="alert alert-danger"></div><section class="panel form-panel"><div><label asp-for="Title" class="form-label">Document Title</label><input asp-for="Title" class="form-control"/></div>
+@if(Model.EditableFieldLabels.Length==0){<div class="empty-state-compact mt-3">This master template has no user-editable text fields. Linked BGP data will still auto-fill.</div>}
+@if(Model.EditableFieldLabels.Length>=1){<div class="mt-3"><label class="form-label">@Label(1)</label><textarea asp-for="CustomText1" class="form-control" rows="3"></textarea></div>}
+@if(Model.EditableFieldLabels.Length>=2){<div class="mt-3"><label class="form-label">@Label(2)</label><textarea asp-for="CustomText2" class="form-control" rows="3"></textarea></div>}
+@if(Model.EditableFieldLabels.Length>=3){<div class="mt-3"><label class="form-label">@Label(3)</label><textarea asp-for="CustomText3" class="form-control" rows="3"></textarea></div>}
+@if(Model.EditableFieldLabels.Length>=4){<div class="mt-3"><label class="form-label">@Label(4)</label><textarea asp-for="CustomText4" class="form-control" rows="3"></textarea></div>}
+<div class="form-actions"><a class="btn btn-light" asp-action="Details" asp-route-id="@Model.Id">Cancel</a><button class="btn btn-primary"><i class="bi bi-check2"></i> Save Draft</button></div></section></form>

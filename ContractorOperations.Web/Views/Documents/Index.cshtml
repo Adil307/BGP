@@ -1,0 +1,36 @@
+@model DocumentLibraryVm
+@inject IPermissionService PermissionService
+@{
+    ViewData["Title"] = "Document Library";
+    var canPrint = await PermissionService.HasPermissionAsync(User, "Documents.Print");
+    var uploaderNames = ViewBag.UploaderNames as Dictionary<string,string> ?? new();
+}
+<div class="page-heading">
+    <div><h1>Document Library</h1><p>Search and manage documents linked to BGP business records.</p></div>
+</div>
+<section class="panel mb-3">
+<form method="get" class="document-filter-grid">
+    <input class="form-control" name="q" value="@Model.Query" placeholder="Search document or reference..." />
+    <select class="form-select" name="referenceType">
+        <option value="">All record types</option>
+        @foreach (var type in new[]{"Requisition","ServiceApproval","Job","Sheet","SheetRow","InventoryRequest","StockItem","Contractor"})
+        {
+            if (Model.ReferenceType == type) { <option value="@type" selected>@type</option> }
+            else { <option value="@type">@type</option> }
+        }
+    </select>
+    <input class="form-control" name="requisitionNumber" value="@Model.RequisitionNumber" placeholder="Requisition No." />
+    <input class="form-control" name="jobNumber" value="@Model.JobNumber" placeholder="Job No." />
+    <input class="form-control" name="serviceApprovalNumber" value="@Model.ServiceApprovalNumber" placeholder="Service Approval No." />
+    <button class="btn btn-primary"><i class="bi bi-search"></i> Search</button>
+    <a class="btn btn-light border" asp-action="Index">Clear</a>
+</form>
+</section>
+<section class="panel p-0 overflow-hidden">
+<div class="table-responsive"><table class="table mb-0 document-table"><thead><tr><th>Document</th><th>Related Record</th><th>Requisition</th><th>Job</th><th>Service Approval</th><th>Uploaded By</th><th>Uploaded</th><th>Actions</th></tr></thead><tbody>
+@if(!Model.Documents.Any()){<tr><td colspan="8" class="text-center py-5 text-muted">No documents found.</td></tr>}
+@foreach(var x in Model.Documents){
+<tr><td><strong>@x.OriginalFileName</strong><small>@((x.SizeBytes/1024d).ToString("N0")) KB · @x.ContentType</small></td><td><span class="reference-chip">@x.ReferenceType</span><br/><small>@(x.ReferenceNumber ?? x.ReferenceId)</small></td><td>@(x.RequisitionNumber ?? "-")</td><td>@(x.JobNumber ?? "-")</td><td>@(x.ServiceApprovalNumber ?? "-")</td><td>@(uploaderNames.TryGetValue(x.UploadedByUserId,out var uploadedBy)?uploadedBy:x.UploadedByUserId)</td><td>@x.UploadedAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")</td><td><div class="action-row"><a class="btn btn-sm btn-outline-primary" asp-action="Preview" asp-route-id="@x.Id" target="_blank"><i class="bi bi-eye"></i></a><a class="btn btn-sm btn-outline-secondary" asp-action="Download" asp-route-id="@x.Id"><i class="bi bi-download"></i></a>@if(canPrint){<a class="btn btn-sm btn-outline-secondary" asp-action="Print" asp-route-id="@x.Id" target="_blank"><i class="bi bi-printer"></i></a>}</div></td></tr>
+}
+</tbody></table></div>
+</section>

@@ -35,7 +35,9 @@ public class ProjectSetupService : IProjectSetupService
         {
             var template = templates[i];
             var legacyName = $"Sheet {i + 1}";
-            var aliases = template.Name.Equals("Financial", StringComparison.OrdinalIgnoreCase) ? new[] { "Finacial" } : Array.Empty<string>();
+            var aliases = template.Name.Equals("Financial", StringComparison.OrdinalIgnoreCase) ? new[] { "Finacial" }
+                : template.Name.Equals("Requisition Approval", StringComparison.OrdinalIgnoreCase) ? new[] { "Service Approval" }
+                : Array.Empty<string>();
             var sheet = sheets.FirstOrDefault(x => string.Equals(x.Name, template.Name, StringComparison.OrdinalIgnoreCase))
                 ?? sheets.FirstOrDefault(x => aliases.Any(a => string.Equals(x.Name, a, StringComparison.OrdinalIgnoreCase)))
                 ?? sheets.FirstOrDefault(x => string.Equals(x.Name, legacyName, StringComparison.OrdinalIgnoreCase))
@@ -85,8 +87,12 @@ public class ProjectSetupService : IProjectSetupService
         if (template.Columns.Count == 0) return;
 
         var order = 1;
-        foreach (var definition in template.Columns)
+        foreach (var definition0 in template.Columns)
         {
+            var definition = definition0;
+            var normalizedName = new string(definition.Name.Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant();
+            if (normalizedName.Contains("REQUISITIONNO") && string.IsNullOrWhiteSpace(definition.Options))
+                definition = definition with { Type = SheetColumnType.Dropdown, Options = "__REQUISITIONS__" };
             var existing = columns.FirstOrDefault(x => string.Equals(x.Name, definition.Name, StringComparison.OrdinalIgnoreCase));
             if (existing == null && definition.Name.Equals("Financial No.", StringComparison.OrdinalIgnoreCase))
                 existing = columns.FirstOrDefault(x => x.Name.Equals("Finacial No.", StringComparison.OrdinalIgnoreCase));
@@ -112,7 +118,7 @@ public class ProjectSetupService : IProjectSetupService
                 existing.Name = definition.Name;
                 existing.IsRequired = definition.Required;
                 existing.Options = definition.Options;
-                if (!hasRows) existing.ColumnType = definition.Type;
+                if (!hasRows || normalizedName.Contains("REQUISITIONNO") || normalizedName.Contains("SERVICEAPPROVALNO")) existing.ColumnType = definition.Type;
                 existing.SortOrder = order;
             }
             order++;
@@ -134,12 +140,16 @@ public class ProjectSetupService : IProjectSetupService
             C("Qty", SheetColumnType.Number, true),
             C("Required Date", SheetColumnType.Date),
             C("Status", SheetColumnType.Status, false, "__AUTO_REQUISITION_STATUS__"),
+            C("Approver / Manager", SheetColumnType.Email, false, "__COMPUTED_REQUISITION_APPROVER__"),
+            C("Approval Comment", SheetColumnType.Text, false, "__COMPUTED_REQUISITION_APPROVAL_COMMENT__"),
+            C("Decision By", SheetColumnType.Email, false, "__COMPUTED_REQUISITION_DECISION_BY__"),
+            C("Decision Date", SheetColumnType.Date, false, "__COMPUTED_REQUISITION_DECISION_DATE__"),
             C("Request Date", SheetColumnType.Date, false, "__AUTO_TODAY__"),
             C("Notes")
         }),
-        new("Service Approval", new List<ColumnTemplate>
+        new("Requisition Approval", new List<ColumnTemplate>
         {
-            C("Service Approval No", options:"__AUTO_SERVICE_APPROVAL_NUMBER__"),
+            C("Requisition Approval No", options:"__AUTO_REQUISITION_APPROVAL_NUMBER__"),
             C("Requisition No", SheetColumnType.Dropdown, true, "__REQUISITIONS__"),
             C("Requested By", SheetColumnType.Email, false, "__AUTO_CURRENT_USER_EMAIL__"),
             C("Approver / Manager", SheetColumnType.User, true, "__APPROVAL_MANAGERS__"),
@@ -181,6 +191,9 @@ public class ProjectSetupService : IProjectSetupService
         new("Purchase Order", new List<ColumnTemplate>
         {
             C("PO NO.", options:"__AUTO_PO_NUMBER__"),
+            C("Requisition No", SheetColumnType.Dropdown, false, "__REQUISITIONS__"),
+            C("Service Approval No", SheetColumnType.Dropdown, false, "__APPROVED_SERVICE_APPROVALS__"),
+            C("Item No", SheetColumnType.Number),
             C("Job Number", SheetColumnType.Dropdown, true, "__SERVICE_JOBS__"),
             C("Vendor / Subcontractor", required:true),
             C("Quotation Reference"),
@@ -193,6 +206,9 @@ public class ProjectSetupService : IProjectSetupService
         }),
         new("Service Logistics", new List<ColumnTemplate>
         {
+            C("Requisition No", SheetColumnType.Dropdown, false, "__REQUISITIONS__"),
+            C("Service Approval No", SheetColumnType.Dropdown, false, "__APPROVED_SERVICE_APPROVALS__"),
+            C("Item No", SheetColumnType.Number),
             C("Job Number", SheetColumnType.Dropdown, true, "__SERVICE_JOBS__"),
             C("Mode", SheetColumnType.Dropdown, true, "Local,International"),
             C("Vendor / Subcontractor"),
@@ -206,6 +222,9 @@ public class ProjectSetupService : IProjectSetupService
         }),
         new("Invoice Reception", new List<ColumnTemplate>
         {
+            C("Requisition No", SheetColumnType.Dropdown, false, "__REQUISITIONS__"),
+            C("Service Approval No", SheetColumnType.Dropdown, false, "__APPROVED_SERVICE_APPROVALS__"),
+            C("Item No", SheetColumnType.Number),
             C("Job Number", SheetColumnType.Dropdown, true, "__SERVICE_JOBS__"),
             C("Invoice Number", required:true),
             C("Invoice Date", SheetColumnType.Date),
@@ -240,7 +259,7 @@ public class ProjectSetupService : IProjectSetupService
             C("Subcontractor"), C("AWB/BL"), C("Description"), C("PO"),
             C("Freight Cost", SheetColumnType.Currency), C("Clearance (USD)", SheetColumnType.Currency),
             C("Request Dpt", SheetColumnType.Dropdown, false, "__DEPARTMENTS__"),
-            C("Order Handled By"), C("Freight Handled By"), C("申请单号 Requisition No"), C("Contract/PO"), C("Shipping Invoice No."),
+            C("Order Handled By"), C("Freight Handled By"), C("申请单号 Requisition No", SheetColumnType.Dropdown, false, "__REQUISITIONS__"), C("Item No", SheetColumnType.Number), C("Contract/PO"), C("Shipping Invoice No."),
             C("Transportation", SheetColumnType.Dropdown, false, "Air,Land,Sea,Express"),
             C("Departure Port"), C("Destination"), C("ETD", SheetColumnType.Date), C("ETA", SheetColumnType.Date), C("Est.Clr Date", SheetColumnType.Date),
             C("Qty", SheetColumnType.Number), C("Unit"), C("PKG NO.", SheetColumnType.Number), C("PKG TYP"), C("GW", SheetColumnType.Number),
@@ -250,7 +269,7 @@ public class ProjectSetupService : IProjectSetupService
         new("Land transportation", Array.Empty<ColumnTemplate>()),
         new("Material Purchase", new List<ColumnTemplate>
         {
-            C("Requisition No"), C("Request Department", SheetColumnType.Dropdown, false, "__DEPARTMENTS__"), C("Request By"), C("Person In Charge"),
+            C("Requisition No", SheetColumnType.Dropdown, false, "__REQUISITIONS__"), C("Item No", SheetColumnType.Number), C("Request Department", SheetColumnType.Dropdown, false, "__DEPARTMENTS__"), C("Request By"), C("Person In Charge"),
             C("Progress", SheetColumnType.Status, false, "Pending,In Progress,Completed")
         }),
         new("Financial", new List<ColumnTemplate>

@@ -1,4 +1,37 @@
 @model ProfileVm
 @{ ViewData["Title"]="My Profile"; }
-<div class="page-heading"><div><h1>My Profile</h1><p>Your account identity, role and department scope.</p></div><a class="btn btn-primary" asp-action="ChangePassword"><i class="bi bi-key"></i> Change Password</a></div>
-<section class="panel"><dl class="detail-grid"><dt>Full Name</dt><dd>@Model.FullName</dd><dt>Email</dt><dd>@Model.Email</dd><dt>Role(s)</dt><dd>@Model.Roles</dd><dt>Departments</dt><dd>@(string.IsNullOrWhiteSpace(Model.Departments)?"All / not assigned":Model.Departments)</dd></dl></section>
+<div class="page-heading"><div><h1>My Profile</h1><p>Your account identity, access scope and secure personal approval signature.</p></div><a class="btn btn-primary" asp-action="ChangePassword"><i class="bi bi-key"></i> Change Password</a></div>
+<div class="dashboard-grid-2">
+<section class="panel"><h3>Account</h3><dl class="detail-grid"><dt>Full Name</dt><dd>@Model.FullName</dd><dt>Email</dt><dd>@Model.Email</dd><dt>Role(s)</dt><dd>@Model.Roles</dd><dt>Departments</dt><dd>@(string.IsNullOrWhiteSpace(Model.Departments)?"All / not assigned":Model.Departments)</dd></dl></section>
+<section class="panel personal-signature-panel">
+    <div class="subsection-title mt-0 pt-0 border-0"><div><h3>My Approval Signature</h3><p>Your signature belongs only to your user account. It is applied automatically when you approve/sign an authorized workflow stage.</p></div></div>
+    @if (!Model.CanManageSignature)
+    {
+        <div class="alert alert-light border mb-0"><i class="bi bi-shield-lock me-1"></i> Your current role does not include signing permission.</div>
+    }
+    else
+    {
+        @if (Model.ActiveSignature != null)
+        {
+            <div class="personal-signature-preview"><img src="@Url.Action("UserSignature","Account",new{id=Model.ActiveSignature.Id})" alt="My active signature"/></div>
+            <div class="signature-meta"><strong>Active</strong><span>Updated @Model.ActiveSignature.UpdatedAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")</span></div>
+        }
+        else
+        {
+            <div class="official-asset-empty">No personal signature configured</div>
+        }
+        <form asp-action="UploadMySignature" method="post" enctype="multipart/form-data" class="mt-3">
+            <label class="form-label">Upload personal signature</label>
+            <input class="form-control mb-2" type="file" name="file" accept=".png,.jpg,.jpeg" required/>
+            <small class="text-muted d-block mb-2">Prefer a transparent PNG with a tight crop. Maximum 5 MB.</small>
+            <button class="btn btn-outline-primary"><i class="bi bi-upload"></i> @(Model.ActiveSignature==null?"Upload Signature":"Replace Signature")</button>
+        </form>
+        @if (Model.ActiveSignature != null)
+        {
+            <form asp-action="DeleteMySignature" asp-route-id="@Model.ActiveSignature.Id" method="post" class="mt-2" onsubmit="return confirm('Remove your active signature? Historical signed records will remain unchanged.');">
+                <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i> Remove Active Signature</button>
+            </form>
+        }
+    }
+</section>
+</div>

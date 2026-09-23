@@ -5,14 +5,18 @@
     var canManage = await PermissionService.HasPermissionAsync(User, "Sheets.Manage");
     var selectedProject = Context.Request.Query["projectId"].ToString();
     var selectedDepartment = Context.Request.Query["departmentId"].ToString();
-    var workflowNames = new[] { "Requisition", "Service Approval", "Service Business", "Purchase Order", "Service Logistics", "Invoice Reception" };
-    var workflowSheets = Model.Sheets.Where(x => workflowNames.Contains(x.Name, StringComparer.OrdinalIgnoreCase)).OrderBy(x => x.Project?.Name).ThenBy(x => Array.FindIndex(workflowNames, n => n.Equals(x.Name, StringComparison.OrdinalIgnoreCase))).ToList();
-    var otherSheets = Model.Sheets.Where(x => !workflowNames.Contains(x.Name, StringComparer.OrdinalIgnoreCase)).ToList();
+    var workflowNames = new[] { "Requisition", "Service Business", "Purchase Order", "Service Logistics", "Invoice Reception" };
+    var workflowSheets = Model.Sheets.Where(x => workflowNames.Contains(x.Name, StringComparer.OrdinalIgnoreCase))
+        .OrderBy(x => x.Project?.Name)
+        .ThenBy(x => Array.FindIndex(workflowNames, n => n.Equals(x.Name, StringComparison.OrdinalIgnoreCase)))
+        .ToList();
+    var otherSheets = Model.Sheets.Where(x => !workflowNames.Contains(x.Name, StringComparer.OrdinalIgnoreCase)
+        && !x.Name.Equals("Requisition Approval", StringComparison.OrdinalIgnoreCase)
+        && !x.Name.Equals("Service Approval", StringComparison.OrdinalIgnoreCase)).ToList();
     var workflowDescriptions = new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase)
     {
-        ["Requisition"] = "Create the service requisition with scope, quantity and required date.",
-        ["Service Approval"] = "Assigned PM/manager reviews the requisition and records the formal decision.",
-        ["Service Business"] = "Create the approved job and initiate vendor quotation follow-up.",
+        ["Requisition"] = "Create the requisition with all items, send it to the responsible manager, then wait for Accept or Reject.",
+        ["Service Business"] = "Create the service job only after the requisition and Service Approval requirements are complete.",
         ["Purchase Order"] = "Create and issue the PO to the vendor.",
         ["Service Logistics"] = "Track local delivery or international export/import through equipment return.",
         ["Invoice Reception"] = "Receive invoice and follow payment until closure."
@@ -33,14 +37,31 @@
 </section>
 
 <section class="panel mb-3">
-    <div class="panel-head"><div><h3>Service Procurement &amp; Job Lifecycle</h3><p>Track each request through approval, job creation, procurement, logistics, and financial closure.</p></div></div>
+    <div class="panel-head"><div><h3>Service Procurement &amp; Job Lifecycle</h3><p>The order is controlled: Requisition first, then Service Approval, then Job Creation and the downstream commercial process.</p></div></div>
+    <div class="workflow-mini-flow mb-3">
+        <span>1. Requisition</span><i class="bi bi-arrow-right"></i><span>2. Service Approval</span><i class="bi bi-arrow-right"></i><span>3. Job Creation</span><i class="bi bi-arrow-right"></i><span>4. Purchase Order</span><i class="bi bi-arrow-right"></i><span>5. Logistics &amp; Return</span><i class="bi bi-arrow-right"></i><span>6. Invoice &amp; Payment</span>
+    </div>
     <div class="workflow-step-grid workflow-step-grid-wide">
-    @for (var i = 0; i < workflowSheets.Count; i++)
+    @foreach (var sheet in workflowSheets.Where(x => x.Name.Equals("Requisition", StringComparison.OrdinalIgnoreCase)))
     {
-        var sheet = workflowSheets[i];
-        var label = sheet.Name == "Requisition" ? "Service Requisition" : sheet.Name == "Service Approval" ? "Manager Approval" : sheet.Name == "Service Business" ? "Job Creation" : sheet.Name == "Service Logistics" ? "Logistics & Return" : sheet.Name == "Invoice Reception" ? "Invoice & Payment" : sheet.Name;
         <a class="workflow-step-card" asp-action="Details" asp-route-id="@sheet.Id">
-            <span class="workflow-step-no">@(Array.FindIndex(workflowNames, x => x.Equals(sheet.Name, StringComparison.OrdinalIgnoreCase)) + 1)</span>
+            <span class="workflow-step-no">1</span>
+            <div><strong>Requisition</strong><small>@workflowDescriptions["Requisition"]</small><em>@(sheet.Project != null ? sheet.Project.Name : sheet.Department?.Name ?? "General")</em></div>
+            <i class="bi bi-arrow-right"></i>
+        </a>
+    }
+        <a class="workflow-step-card" asp-controller="ServiceApprovals" asp-action="Index" asp-route-projectId="@selectedProject">
+            <span class="workflow-step-no">2</span>
+            <div><strong>Service Approval</strong><small>Available only after a requisition is accepted. It stays Waiting Approval until its required signatures/decisions are complete.</small><em>Open Service Approval register</em></div>
+            <i class="bi bi-arrow-right"></i>
+        </a>
+    @foreach (var sheet in workflowSheets.Where(x => !x.Name.Equals("Requisition", StringComparison.OrdinalIgnoreCase)))
+    {
+        var baseStep = Array.FindIndex(workflowNames, x => x.Equals(sheet.Name, StringComparison.OrdinalIgnoreCase));
+        var stepNo = baseStep + 2;
+        var label = sheet.Name == "Service Business" ? "Job Creation" : sheet.Name == "Service Logistics" ? "Logistics & Return" : sheet.Name == "Invoice Reception" ? "Invoice & Payment" : sheet.Name;
+        <a class="workflow-step-card" asp-action="Details" asp-route-id="@sheet.Id">
+            <span class="workflow-step-no">@stepNo</span>
             <div><strong>@label</strong><small>@workflowDescriptions.GetValueOrDefault(sheet.Name)</small><em>@(sheet.Project != null ? sheet.Project.Name : sheet.Department?.Name ?? "General")</em></div>
             <i class="bi bi-arrow-right"></i>
         </a>
