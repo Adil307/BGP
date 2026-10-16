@@ -15,73 +15,87 @@
         && !x.Name.Equals("Service Approval", StringComparison.OrdinalIgnoreCase)).ToList();
     var workflowDescriptions = new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase)
     {
-        ["Requisition"] = "Create the requisition with all items, send it to the responsible manager, then wait for Accept or Reject.",
-        ["Service Business"] = "Create the service job only after the requisition and Service Approval requirements are complete.",
-        ["Purchase Order"] = "Create and issue the PO to the vendor.",
-        ["Service Logistics"] = "Track local delivery or international export/import through equipment return.",
-        ["Invoice Reception"] = "Receive invoice and follow payment until closure."
+        ["Requisition"] = "Prepare and submit the requisition.",
+        ["Service Business"] = "Create the approved service job.",
+        ["Purchase Order"] = "Prepare and issue the purchase order.",
+        ["Service Logistics"] = "Manage delivery and equipment return.",
+        ["Invoice Reception"] = "Track invoices and payments."
     };
 }
 
 <div class="page-heading">
-    <div><h1>Service Operations</h1><p>Manage service requisitions, approvals, jobs, purchase orders, logistics, and invoice closure from one controlled workspace.</p></div>
-    @if (canManage) { <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addSheetModal"><i class="bi bi-plus-lg"></i> New Sheet</button> }
+    <div>
+        <h1>Service Operations</h1>
+    </div>
+    @if (canManage)
+    {
+        <div class="page-actions"><button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addSheetModal"><i class="bi bi-plus-lg"></i> Create New Sheet</button></div>
+    }
 </div>
 
-<section class="panel mb-3">
-    <form method="get" class="form-grid-3 align-items-end">
+<section class="panel mb-3 filter-panel no-print">
+    <form method="get" class="form-grid-3 align-items-end enterprise-filter-grid">
         <div><label class="form-label">Project</label><select class="form-select" name="projectId"><option value="">All Projects</option>@foreach(var p in Model.Projects){if(selectedProject==p.Id.ToString()){<option value="@p.Id" selected>@p.Name</option>}else{<option value="@p.Id">@p.Name</option>}}</select></div>
         <div><label class="form-label">Department</label><select class="form-select" name="departmentId"><option value="">All Departments</option>@foreach(var d in Model.Departments){if(selectedDepartment==d.Id.ToString()){<option value="@d.Id" selected>@d.Name</option>}else{<option value="@d.Id">@d.Name</option>}}</select></div>
-        <div><button class="btn btn-outline-primary"><i class="bi bi-funnel"></i> Filter</button> <a class="btn btn-light border" asp-action="Index">Clear</a></div>
+        <div class="filter-button-row"><button class="btn btn-primary"><i class="bi bi-funnel"></i> Apply Filter</button> <a class="btn btn-light border" asp-action="Index">Clear</a></div>
     </form>
 </section>
 
-<section class="panel mb-3">
-    <div class="panel-head"><div><h3>Service Procurement &amp; Job Lifecycle</h3><p>The order is controlled: Requisition first, then Service Approval, then Job Creation and the downstream commercial process.</p></div></div>
-    <div class="workflow-mini-flow mb-3">
-        <span>1. Requisition</span><i class="bi bi-arrow-right"></i><span>2. Service Approval</span><i class="bi bi-arrow-right"></i><span>3. Job Creation</span><i class="bi bi-arrow-right"></i><span>4. Purchase Order</span><i class="bi bi-arrow-right"></i><span>5. Logistics &amp; Return</span><i class="bi bi-arrow-right"></i><span>6. Invoice &amp; Payment</span>
-    </div>
-    <div class="workflow-step-grid workflow-step-grid-wide">
-    @foreach (var sheet in workflowSheets.Where(x => x.Name.Equals("Requisition", StringComparison.OrdinalIgnoreCase)))
-    {
-        <a class="workflow-step-card" asp-action="Details" asp-route-id="@sheet.Id">
-            <span class="workflow-step-no">1</span>
-            <div><strong>Requisition</strong><small>@workflowDescriptions["Requisition"]</small><em>@(sheet.Project != null ? sheet.Project.Name : sheet.Department?.Name ?? "General")</em></div>
-            <i class="bi bi-arrow-right"></i>
+<section class="panel mb-3 workflow-board-panel">
+    <div class="workflow-board-head"><h3>Service Workflow</h3></div>
+
+    <div class="workflow-step-grid-pro">
+        @foreach (var sheet in workflowSheets.Where(x => x.Name.Equals("Requisition", StringComparison.OrdinalIgnoreCase)))
+        {
+            <a class="workflow-step-card-pro" asp-action="Details" asp-route-id="@sheet.Id">
+                <div class="workflow-card-top"><span class="workflow-step-badge">01</span><i class="bi bi-arrow-up-right workflow-card-arrow" aria-hidden="true"></i></div>
+                <div class="workflow-card-body">
+                    <strong>Requisition</strong>
+                    <p>@workflowDescriptions["Requisition"]</p>
+                </div>
+                <div class="workflow-card-bottom"><span>@(sheet.Project != null ? sheet.Project.Name : sheet.Department?.Name ?? "General")</span><span class="workflow-card-link">Open <i class="bi bi-arrow-right"></i></span></div>
+            </a>
+        }
+
+        <a class="workflow-step-card-pro emphasis" asp-controller="ServiceApprovals" asp-action="Index" asp-route-projectId="@selectedProject">
+            <div class="workflow-card-top"><span class="workflow-step-badge">02</span><i class="bi bi-arrow-up-right workflow-card-arrow" aria-hidden="true"></i></div>
+            <div class="workflow-card-body">
+                <strong>Service Approval</strong>
+                <p>Review decisions and signatures.</p>
+            </div>
+            <div class="workflow-card-bottom"><span class="workflow-card-link">Open <i class="bi bi-arrow-right"></i></span></div>
         </a>
-    }
-        <a class="workflow-step-card" asp-controller="ServiceApprovals" asp-action="Index" asp-route-projectId="@selectedProject">
-            <span class="workflow-step-no">2</span>
-            <div><strong>Service Approval</strong><small>Available only after a requisition is accepted. It stays Waiting Approval until its required signatures/decisions are complete.</small><em>Open Service Approval register</em></div>
-            <i class="bi bi-arrow-right"></i>
-        </a>
-    @foreach (var sheet in workflowSheets.Where(x => !x.Name.Equals("Requisition", StringComparison.OrdinalIgnoreCase)))
-    {
-        var baseStep = Array.FindIndex(workflowNames, x => x.Equals(sheet.Name, StringComparison.OrdinalIgnoreCase));
-        var stepNo = baseStep + 2;
-        var label = sheet.Name == "Service Business" ? "Job Creation" : sheet.Name == "Service Logistics" ? "Logistics & Return" : sheet.Name == "Invoice Reception" ? "Invoice & Payment" : sheet.Name;
-        <a class="workflow-step-card" asp-action="Details" asp-route-id="@sheet.Id">
-            <span class="workflow-step-no">@stepNo</span>
-            <div><strong>@label</strong><small>@workflowDescriptions.GetValueOrDefault(sheet.Name)</small><em>@(sheet.Project != null ? sheet.Project.Name : sheet.Department?.Name ?? "General")</em></div>
-            <i class="bi bi-arrow-right"></i>
-        </a>
-    }
+
+        @foreach (var sheet in workflowSheets.Where(x => !x.Name.Equals("Requisition", StringComparison.OrdinalIgnoreCase)))
+        {
+            var baseStep = Array.FindIndex(workflowNames, x => x.Equals(sheet.Name, StringComparison.OrdinalIgnoreCase));
+            var stepNo = baseStep + 2;
+            var label = sheet.Name == "Service Business" ? "Job Creation" : sheet.Name == "Service Logistics" ? "Logistics & Return" : sheet.Name == "Invoice Reception" ? "Invoice & Payment" : sheet.Name;
+            <a class="workflow-step-card-pro" asp-action="Details" asp-route-id="@sheet.Id">
+                <div class="workflow-card-top"><span class="workflow-step-badge">@stepNo.ToString("00")</span><i class="bi bi-arrow-up-right workflow-card-arrow" aria-hidden="true"></i></div>
+                <div class="workflow-card-body">
+                    <strong>@label</strong>
+                    <p>@workflowDescriptions.GetValueOrDefault(sheet.Name)</p>
+                </div>
+                <div class="workflow-card-bottom"><span>@(sheet.Project != null ? sheet.Project.Name : sheet.Department?.Name ?? "General")</span><span class="workflow-card-link">Open <i class="bi bi-arrow-right"></i></span></div>
+            </a>
+        }
     </div>
 </section>
 
 <section class="panel">
-    <div class="panel-head"><div><h3>Other Sheets</h3><p>Supporting operational records that are not part of the core service lifecycle.</p></div></div>
-    <div class="sheet-card-grid">
+    <div class="panel-head"><h3>Other Sheets</h3></div>
+    <div class="sheet-card-grid sheet-card-grid-pro">
     @foreach (var sheet in otherSheets)
     {
-        <a class="sheet-card" asp-action="Details" asp-route-id="@sheet.Id">
+        <a class="sheet-card sheet-card-pro" asp-action="Details" asp-route-id="@sheet.Id">
             <div class="sheet-card-top"><span class="sheet-icon"><i class="bi bi-table"></i></span><span class="sheet-id">@sheet.UniqueId</span></div>
             <h4>@sheet.Name</h4>
             <p>@(sheet.Project != null ? $"Project: {sheet.Project.Name}" : sheet.Department != null ? $"Department: {sheet.Department.Name}" : "General sheet")</p>
             <span class="sheet-open">Open Sheet <i class="bi bi-arrow-right"></i></span>
         </a>
     }
-    @if (!otherSheets.Any()) { <div class="text-muted py-3">No other sheets found.</div> }
+    @if (!otherSheets.Any()) { <div class="bgp-empty-state"><i class="bi bi-table"></i><strong>No supporting sheets</strong><p>No additional operational sheets match the current selection.</p></div> }
     </div>
 </section>
 
