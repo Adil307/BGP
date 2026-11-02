@@ -84,7 +84,9 @@ public class ProjectSetupService : IProjectSetupService
             columns.Clear();
         }
 
-        if (template.Columns.Count == 0) return;
+        foreach (var legacyColumn in columns.Where(x => x.Name.Equals("Service Approval No", StringComparison.OrdinalIgnoreCase)))
+            legacyColumn.IsRequired = false;
+        if (template.Columns.Count == 0) { await _db.SaveChangesAsync(); return; }
 
         var order = 1;
         foreach (var definition0 in template.Columns)
@@ -172,7 +174,6 @@ public class ProjectSetupService : IProjectSetupService
             C("Person In Charge", required:true),
             C("Job Number", options:"__AUTO_JOB_NUMBER__"),
             C("Requisition No.", SheetColumnType.Dropdown, true, "__REQUISITIONS__"),
-            C("Service Approval No", SheetColumnType.Dropdown, true, "__APPROVED_SERVICE_APPROVALS__"),
             C("Item No", SheetColumnType.Number, false, "__COMPUTED_REQUISITION_ITEM_NO__"),
             C("Service Description", SheetColumnType.Text, false, "__COMPUTED_REQUISITION_DESCRIPTION__"),
             C("Unit", SheetColumnType.Text, false, "__COMPUTED_REQUISITION_UNIT__"),
@@ -192,7 +193,6 @@ public class ProjectSetupService : IProjectSetupService
         {
             C("PO NO.", options:"__AUTO_PO_NUMBER__"),
             C("Requisition No", SheetColumnType.Dropdown, false, "__REQUISITIONS__"),
-            C("Service Approval No", SheetColumnType.Dropdown, false, "__APPROVED_SERVICE_APPROVALS__"),
             C("Item No", SheetColumnType.Number),
             C("Job Number", SheetColumnType.Dropdown, true, "__SERVICE_JOBS__"),
             C("Vendor / Subcontractor", required:true),
@@ -207,7 +207,6 @@ public class ProjectSetupService : IProjectSetupService
         new("Service Logistics", new List<ColumnTemplate>
         {
             C("Requisition No", SheetColumnType.Dropdown, false, "__REQUISITIONS__"),
-            C("Service Approval No", SheetColumnType.Dropdown, false, "__APPROVED_SERVICE_APPROVALS__"),
             C("Item No", SheetColumnType.Number),
             C("Job Number", SheetColumnType.Dropdown, true, "__SERVICE_JOBS__"),
             C("Mode", SheetColumnType.Dropdown, true, "Local,International"),
@@ -223,7 +222,6 @@ public class ProjectSetupService : IProjectSetupService
         new("Invoice Reception", new List<ColumnTemplate>
         {
             C("Requisition No", SheetColumnType.Dropdown, false, "__REQUISITIONS__"),
-            C("Service Approval No", SheetColumnType.Dropdown, false, "__APPROVED_SERVICE_APPROVALS__"),
             C("Item No", SheetColumnType.Number),
             C("Job Number", SheetColumnType.Dropdown, true, "__SERVICE_JOBS__"),
             C("Invoice Number", required:true),
