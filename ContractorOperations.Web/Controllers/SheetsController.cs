@@ -365,7 +365,9 @@ public class SheetsController : Controller
 
         foreach (var column in columns)
         {
-            if (!column.IsRequired || IsSystemManagedColumn(column)) continue;
+            if (!column.IsRequired || IsSystemManagedColumn(column) ||
+                (column.Name.Equals("Service Approval No", StringComparison.OrdinalIgnoreCase) &&
+                 new[] { "Service Business", "Purchase Order", "Service Logistics", "Invoice Reception" }.Contains(sheet.Name, StringComparer.OrdinalIgnoreCase))) continue;
             var key = $"col_{column.Id}";
             var valueForValidation = column.ColumnType == SheetColumnType.File
                 ? form.Files.GetFile(key)?.FileName
@@ -507,14 +509,23 @@ public class SheetsController : Controller
             }
             else
             {
-                submittedValues[column.Id] = form[$"col_{column.Id}"].ToString().Trim();
+                // Hidden legacy Service Approval references must survive edits unchanged.
+                submittedValues[column.Id] = column.Name.Equals("Service Approval No", StringComparison.OrdinalIgnoreCase)
+                    && (sheet.Name.Equals("Service Business", StringComparison.OrdinalIgnoreCase)
+                        || sheet.Name.Equals("Purchase Order", StringComparison.OrdinalIgnoreCase)
+                        || sheet.Name.Equals("Service Logistics", StringComparison.OrdinalIgnoreCase)
+                        || sheet.Name.Equals("Invoice Reception", StringComparison.OrdinalIgnoreCase))
+                    ? current
+                    : form[$"col_{column.Id}"].ToString().Trim();
             }
         }
 
         ApplySheetDefaults(sheet, columns, submittedValues);
         foreach (var column in columns)
         {
-            if (!column.IsRequired || IsSystemManagedColumn(column)) continue;
+            if (!column.IsRequired || IsSystemManagedColumn(column) ||
+                (column.Name.Equals("Service Approval No", StringComparison.OrdinalIgnoreCase) &&
+                 new[] { "Service Business", "Purchase Order", "Service Logistics", "Invoice Reception" }.Contains(sheet.Name, StringComparer.OrdinalIgnoreCase))) continue;
             var current = row.Cells.FirstOrDefault(x => x.SheetColumnId == column.Id)?.Value;
             var valueForValidation = column.ColumnType == SheetColumnType.File
                 ? form.Files.GetFile($"col_{column.Id}")?.FileName ?? current
@@ -616,7 +627,7 @@ public class SheetsController : Controller
                     Url.Action(nameof(Details), "Sheets", new { id = sheet.Id, q = requisition }) ?? $"/Sheets/Details/{sheet.Id}");
         }
         await _audit.WriteAsync(HttpContext, approve ? "Approve" : "Reject", "RequisitionApproval", row.Id, requisition);
-        TempData["Success"] = approve ? "Requisition approved. The requester was notified and Service Approval can now be created." : "Requisition rejected with reason. The requester was notified and the record remains in history.";
+        TempData["Success"] = approve ? "Requisition approved. The requester was notified and Job Creation is now available." : "Requisition rejected with reason. The requester was notified and the record remains in history.";
         return RedirectToAction(nameof(Details), new { id = sheet.Id });
     }
 
@@ -831,13 +842,13 @@ public class SheetsController : Controller
             {
                 var url = Url.Action(nameof(Details), "Sheets", new { id = sheetId, q = requisitionNo }) ?? $"/Sheets/Details/{sheetId}";
                 await CreateNotificationAsync(requester.Id, approve ? "Requisition accepted" : "Requisition rejected",
-                    approve ? $"{requisitionNo} was accepted. Service Approval can now be created." : $"{requisitionNo} was rejected. Reason: {reason}", url);
+                    approve ? $"{requisitionNo} was accepted. Job Creation is now available." : $"{requisitionNo} was rejected. Reason: {reason}", url);
             }
         }
 
         await _audit.WriteAsync(HttpContext, approve ? "Accept" : "Reject", "Requisition", requisitionNo, reason);
         TempData["Success"] = approve
-            ? $"Requisition {requisitionNo} accepted. Service Approval is now available."
+            ? $"Requisition {requisitionNo} accepted. Job Creation is now available."
             : $"Requisition {requisitionNo} rejected. The reason has been recorded and the requisition remains in history.";
         return RedirectToAction(nameof(Details), new { id = sheetId, q = requisitionNo });
     }
@@ -1380,7 +1391,6 @@ public class SheetsController : Controller
         else if (string.Equals(sheet.Name, "Service Business", StringComparison.OrdinalIgnoreCase))
         {
             var req = Value("Requisition No.") ?? Value("Requisition No");
-            var approval = Value("Service Approval No");
             if (string.IsNullOrWhiteSpace(req) || !await SheetReferenceExistsAsync(sheet.ProjectId.Value, "Requisition", "Requisition No", req))
             {
                 ModelState.AddModelError(string.Empty, "Select a valid approved requisition before creating the job.");
@@ -1395,17 +1405,6 @@ public class SheetsController : Controller
                     ModelState.AddModelError(string.Empty, $"A service job has already been created from requisition {req}.");
             }
 
-            if (string.IsNullOrWhiteSpace(approval))
-                ModelState.AddModelError(string.Empty, "A final approved Service Approval is required before a job can be created.");
-            else
-            {
-                var serviceApproval = await _db.ServiceApprovals.AsNoTracking()
-                    .FirstOrDefaultAsync(x => x.ProjectId == sheet.ProjectId.Value && x.ApprovalNumber == approval);
-                if (serviceApproval == null || serviceApproval.Status != ServiceApprovalStatus.Approved)
-                    ModelState.AddModelError(string.Empty, $"Service Approval {approval} must be finally Approved before job creation.");
-                else if (!string.Equals(serviceApproval.RequisitionNumber.Trim(), req?.Trim(), StringComparison.OrdinalIgnoreCase))
-                    ModelState.AddModelError(string.Empty, $"Service Approval {approval} does not belong to requisition {req}.");
-            }
         }
         else if (string.Equals(sheet.Name, "Purchase Order", StringComparison.OrdinalIgnoreCase))
         {

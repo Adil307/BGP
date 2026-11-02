@@ -86,7 +86,6 @@ public class DashboardController : Controller
         vm.RoleUserCounts = roleCounts.ToDictionary(x => x.Role, x => x.Count);
 
         var requisitionCount = await CountSheetRowsAsync("Requisition");
-        var approvalCount = await CountSheetRowsAsync("Service Approval");
         var serviceJobCount = await CountSheetRowsAsync("Service Business");
         var poCount = await CountSheetRowsAsync("Purchase Order");
         var logisticsCount = await CountSheetRowsAsync("Service Logistics");
@@ -94,17 +93,12 @@ public class DashboardController : Controller
         vm.WorkflowStageCounts = new Dictionary<string, int>
         {
             ["Requisitions"] = requisitionCount,
-            ["Service Approvals"] = approvalCount,
             ["Jobs Created"] = serviceJobCount,
             ["Purchase Orders"] = poCount,
             ["Delivery / Return"] = logisticsCount,
             ["Invoices"] = invoiceCount
         };
 
-        var approvalStatuses = await CountSheetStatusAsync("Service Approval", "Approval Status");
-        vm.PendingServiceApprovals = approvalStatuses.GetValueOrDefault("Pending");
-        vm.ApprovedServiceApprovals = approvalStatuses.GetValueOrDefault("Approved");
-        vm.RejectedServiceApprovals = approvalStatuses.GetValueOrDefault("Rejected");
         var invoiceStatuses = await CountSheetStatusAsync("Invoice Reception", "Payment Status");
         vm.PaidInvoices = invoiceStatuses.GetValueOrDefault("Paid");
         vm.PendingInvoices = Math.Max(0, invoiceCount - vm.PaidInvoices);

@@ -37,7 +37,7 @@
     {
         <div class="workflow-form-notice approval-notice">
             <i class="bi bi-person-check-fill"></i>
-            <div><strong>Requisition Approval</strong><span>Submit the completed requisition to the responsible manager for an Approve or Reject decision. Only an approved requisition can move to the Service Approval Sheet.</span></div>
+            <div><strong>Requisition Approval</strong><span>Submit the completed requisition to the responsible manager for an Approve or Reject decision. Only an approved requisition can move to Job Creation.</span></div>
         </div>
     }
     else if (isRequisition)
@@ -46,19 +46,19 @@
     }
     else if (isServiceBusiness)
     {
-        <div class="workflow-form-notice"><i class="bi bi-briefcase-fill"></i><div><strong>Step 4 · Job Creation</strong><span>Select the approved requisition and the final Service Approval Number. On save, every requisition item is copied automatically under one shared Job Number.</span></div></div>
+        <div class="workflow-form-notice"><i class="bi bi-briefcase-fill"></i><div><strong>Step 2 · Job Creation</strong><span>Select the approved requisition. On save, every requisition item is copied automatically under one shared Job Number.</span></div></div>
     }
     else if (isPurchaseOrder)
     {
-        <div class="workflow-form-notice"><i class="bi bi-receipt"></i><div><strong>Step 5 · Purchase Order</strong><span>Create the vendor PO against an approved service job and record quotation/terms.</span></div></div>
+        <div class="workflow-form-notice"><i class="bi bi-receipt"></i><div><strong>Step 3 · Purchase Order</strong><span>Create the vendor PO against an approved service job and record quotation/terms.</span></div></div>
     }
     else if (isServiceLogistics)
     {
-        <div class="workflow-form-notice"><i class="bi bi-truck"></i><div><strong>Step 6 · Logistics & Return</strong><span>Track local delivery or international export, follow-up, received-back date and import reference.</span></div></div>
+        <div class="workflow-form-notice"><i class="bi bi-truck"></i><div><strong>Step 4 · Logistics & Return</strong><span>Track local delivery or international export, follow-up, received-back date and import reference.</span></div></div>
     }
     else if (isInvoiceReception)
     {
-        <div class="workflow-form-notice"><i class="bi bi-cash-stack"></i><div><strong>Step 7 · Invoice & Payment Follow-up</strong><span>Invoice reception starts after the equipment/service is received back. Duplicate invoice numbers are blocked across BGP.</span></div></div>
+        <div class="workflow-form-notice"><i class="bi bi-cash-stack"></i><div><strong>Step 5 · Invoice & Payment Follow-up</strong><span>Invoice reception starts after the equipment/service is received back. Duplicate invoice numbers are blocked across BGP.</span></div></div>
     }
     <form asp-action="@(editing ? "EditRowPost" : "AddRowPost")" method="post" enctype="multipart/form-data">
         @if (editing) { <input type="hidden" name="id" value="@Model.Row!.Id"/> } else { <input type="hidden" name="sheetId" value="@Model.Sheet.Id"/> }
@@ -79,6 +79,7 @@
         <div class="dynamic-form-grid">
         @foreach (var col in Model.Columns)
         {
+            if ((isServiceBusiness || isPurchaseOrder || isServiceLogistics || isInvoiceReception) && col.Name.Equals("Service Approval No", StringComparison.OrdinalIgnoreCase)) continue;
             Model.Values.TryGetValue(col.Id, out var value);
             var fieldName = $"col_{col.Id}";
             var isAuto = !string.IsNullOrWhiteSpace(col.Options) && col.Options.StartsWith("__AUTO_", StringComparison.OrdinalIgnoreCase);

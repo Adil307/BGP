@@ -26,7 +26,9 @@
     var requisitionDecisionByColumn = Model.Columns.FirstOrDefault(x => x.Name.Equals("Decision By", StringComparison.OrdinalIgnoreCase));
     var requisitionDecisionDateColumn = Model.Columns.FirstOrDefault(x => x.Name.Equals("Decision Date", StringComparison.OrdinalIgnoreCase));
     var addLabel = isRequisition ? "Add Req" : isServiceBusiness ? "Add Job" : isServiceApproval ? "Add Legacy Review" : "Add Job";
-    var workflowOrder = new[] { "Requisition", "Service Approval", "Service Business", "Purchase Order", "Service Logistics", "Invoice Reception" };
+    var workflowOrder = new[] { "Requisition", "Service Business", "Purchase Order", "Service Logistics", "Invoice Reception" };
+    var visibleColumns = Model.Columns.Where(x => !(x.Name.Equals("Service Approval No", StringComparison.OrdinalIgnoreCase)
+        && new[] { "Service Business", "Purchase Order", "Service Logistics", "Invoice Reception" }.Contains(Model.Sheet.Name, StringComparer.OrdinalIgnoreCase))).ToList();
 }
 
 <div class="sheet-fullscreen-page">
@@ -52,11 +54,6 @@
         @for (var i = 0; i < workflowOrder.Length; i++)
         {
             var name = workflowOrder[i];
-            if (name == "Service Approval")
-            {
-                <a class="workflow-breadcrumb-step" asp-controller="ServiceApprovals" asp-action="Index" asp-route-projectId="@Model.Sheet.ProjectId"><span>@(i + 1)</span>Service Approval</a>
-                continue;
-            }
             var target = Model.WorkflowSheets.FirstOrDefault(x => x.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
             var label = name == "Requisition" ? "Requisition" : name == "Service Business" ? "Job Creation" : name == "Service Logistics" ? "Logistics & Return" : name == "Invoice Reception" ? "Invoice & Payment" : name;
             if (target != null)
@@ -71,7 +68,7 @@
 {
     <div class="workflow-context-card">
         <div class="workflow-context-icon"><i class="bi bi-list-check"></i></div>
-        <div><strong>Step 1 · Requisition</strong><p>Create one requisition with all required line items. When the requisition is complete, select the responsible manager and submit it. Its status becomes <b>Waiting Approval</b>. The manager then <b>Accepts</b> or <b>Rejects</b> it with a recorded reason/comment. Only an accepted requisition can continue to Service Approval.</p></div>
+        <div><strong>Step 1 · Requisition</strong><p>Create one requisition with all required line items. When the requisition is complete, select the responsible manager and submit it. Its status becomes <b>Waiting Approval</b>. The manager then <b>Accepts</b> or <b>Rejects</b> it with a recorded reason/comment. Only an accepted requisition can continue to Job Creation.</p></div>
     </div>
 }
 @if (isServiceApproval)
@@ -90,7 +87,7 @@
         .OrderByDescending(g => g.Max(r => r.CreatedAt))
         .ToList();
     <section class="panel requisition-workflow-panel mb-3">
-        <div class="subsection-title"><div><h3>Requisition Approval Queue</h3><p>Approval belongs to the requisition itself. Complete the items, send the requisition to one responsible manager, then wait for Accept or Reject before creating Service Approval.</p></div></div>
+        <div class="subsection-title"><div><h3>Requisition Approval Queue</h3><p>Approval belongs to the requisition itself. Complete the items, send the requisition to one responsible manager, then wait for Accept or Reject before creating the job.</p></div></div>
         @if (!requisitionGroups.Any())
         {
             <div class="empty-state-compact">No requisitions have been created yet.</div>
@@ -136,7 +133,7 @@
                     }
                     @if (accepted && Model.Sheet.ProjectId.HasValue)
                     {
-                        <a class="btn btn-sm btn-success" asp-controller="ServiceApprovals" asp-action="Create" asp-route-projectId="@Model.Sheet.ProjectId" asp-route-requisitionNo="@group.Key"><i class="bi bi-file-earmark-check"></i> Create Service Approval</a>
+                        <a class="btn btn-sm btn-success" asp-controller="Sheets" asp-action="Index" asp-route-projectId="@Model.Sheet.ProjectId"><i class="bi bi-briefcase"></i> Open Job Creation</a>
                     }
                 </div>
                 @if (draft && canManage)
@@ -179,11 +176,11 @@
 <section class="panel p-0 overflow-hidden">
     <div class="dynamic-sheet-wrap">
         <table class="table dynamic-sheet-table mb-0">
-            <thead><tr><th class="sticky-id">Unique ID</th>@foreach(var col in Model.Columns){<th>@col.Name <small>@col.ColumnType</small></th>}<th class="sheet-actions-col @(isServiceApproval ? "approval-actions-col" : "")">@(isServiceApproval ? "Decision / Actions" : "Actions")</th></tr></thead>
+            <thead><tr><th class="sticky-id">Unique ID</th>@foreach(var col in visibleColumns){<th>@col.Name <small>@col.ColumnType</small></th>}<th class="sheet-actions-col @(isServiceApproval ? "approval-actions-col" : "")">@(isServiceApproval ? "Decision / Actions" : "Actions")</th></tr></thead>
             <tbody>
             @if (!Model.Rows.Any())
             {
-                <tr><td colspan="@(Model.Columns.Count + 2)" class="text-center py-5 text-muted">No records yet. Use <strong>@addLabel</strong> to create the first record.</td></tr>
+                <tr><td colspan="@(visibleColumns.Count + 2)" class="text-center py-5 text-muted">No records yet. Use <strong>@addLabel</strong> to create the first record.</td></tr>
             }
             @foreach (var row in Model.Rows)
             {
@@ -192,7 +189,7 @@
                 var canApproveThisRow = canApprove && (elevatedApprover || string.IsNullOrWhiteSpace(assignedApprover) || string.Equals(assignedApprover, User.Identity?.Name, StringComparison.OrdinalIgnoreCase));
                 <tr>
                     <td class="sticky-id"><span class="row-id-chip">@row.UniqueId</span></td>
-                    @foreach (var col in Model.Columns)
+                    @foreach (var col in visibleColumns)
                     {
                         var value = row.Cells.FirstOrDefault(x => x.SheetColumnId == col.Id)?.Value;
                         <td>
