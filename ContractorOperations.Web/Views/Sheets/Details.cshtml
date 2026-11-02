@@ -27,6 +27,8 @@
     var requisitionDecisionDateColumn = Model.Columns.FirstOrDefault(x => x.Name.Equals("Decision Date", StringComparison.OrdinalIgnoreCase));
     var addLabel = isRequisition ? "Add Req" : isServiceBusiness ? "Add Job" : isServiceApproval ? "Add Legacy Review" : "Add Job";
     var workflowOrder = new[] { "Requisition", "Service Business", "Purchase Order", "Service Logistics", "Invoice Reception" };
+    var visibleColumns = Model.Columns.Where(x => !(x.Name.Equals("Service Approval No", StringComparison.OrdinalIgnoreCase)
+        && new[] { "Service Business", "Purchase Order", "Service Logistics", "Invoice Reception" }.Contains(Model.Sheet.Name, StringComparer.OrdinalIgnoreCase))).ToList();
 }
 
 <div class="sheet-fullscreen-page">
@@ -174,11 +176,11 @@
 <section class="panel p-0 overflow-hidden">
     <div class="dynamic-sheet-wrap">
         <table class="table dynamic-sheet-table mb-0">
-            <thead><tr><th class="sticky-id">Unique ID</th>@foreach(var col in Model.Columns){<th>@col.Name <small>@col.ColumnType</small></th>}<th class="sheet-actions-col @(isServiceApproval ? "approval-actions-col" : "")">@(isServiceApproval ? "Decision / Actions" : "Actions")</th></tr></thead>
+            <thead><tr><th class="sticky-id">Unique ID</th>@foreach(var col in visibleColumns){<th>@col.Name <small>@col.ColumnType</small></th>}<th class="sheet-actions-col @(isServiceApproval ? "approval-actions-col" : "")">@(isServiceApproval ? "Decision / Actions" : "Actions")</th></tr></thead>
             <tbody>
             @if (!Model.Rows.Any())
             {
-                <tr><td colspan="@(Model.Columns.Count + 2)" class="text-center py-5 text-muted">No records yet. Use <strong>@addLabel</strong> to create the first record.</td></tr>
+                <tr><td colspan="@(visibleColumns.Count + 2)" class="text-center py-5 text-muted">No records yet. Use <strong>@addLabel</strong> to create the first record.</td></tr>
             }
             @foreach (var row in Model.Rows)
             {
@@ -187,7 +189,7 @@
                 var canApproveThisRow = canApprove && (elevatedApprover || string.IsNullOrWhiteSpace(assignedApprover) || string.Equals(assignedApprover, User.Identity?.Name, StringComparison.OrdinalIgnoreCase));
                 <tr>
                     <td class="sticky-id"><span class="row-id-chip">@row.UniqueId</span></td>
-                    @foreach (var col in Model.Columns)
+                    @foreach (var col in visibleColumns)
                     {
                         var value = row.Cells.FirstOrDefault(x => x.SheetColumnId == col.Id)?.Value;
                         <td>
