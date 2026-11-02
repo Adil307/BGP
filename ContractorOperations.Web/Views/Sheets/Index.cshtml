@@ -257,19 +257,11 @@
             </a>
         }
 
-        <a class="workflow-step-card-pro emphasis" asp-controller="ServiceApprovals" asp-action="Index" asp-route-projectId="@selectedProject">
-            <div class="workflow-card-top"><span class="workflow-step-badge">02</span><i class="bi bi-arrow-up-right workflow-card-arrow" aria-hidden="true"></i></div>
-            <div class="workflow-card-body">
-                <strong>Service Approval</strong>
-                <p>Review decisions and signatures.</p>
-            </div>
-            <div class="workflow-card-bottom"><span class="workflow-card-link">Open <i class="bi bi-arrow-right"></i></span></div>
-        </a>
 
         @foreach (var sheet in workflowSheets.Where(x => !x.Name.Equals("Requisition", StringComparison.OrdinalIgnoreCase)))
         {
             var baseStep = Array.FindIndex(workflowNames, x => x.Equals(sheet.Name, StringComparison.OrdinalIgnoreCase));
-            var stepNo = baseStep + 2;
+            var stepNo = baseStep + 1;
             var label = sheet.Name == "Service Business" ? "Job Creation" : sheet.Name == "Service Logistics" ? "Logistics & Return" : sheet.Name == "Invoice Reception" ? "Invoice & Payment" : sheet.Name;
             <a class="workflow-step-card-pro" asp-action="Details" asp-route-id="@sheet.Id">
                 <div class="workflow-card-top"><span class="workflow-step-badge">@stepNo.ToString("00")</span><i class="bi bi-arrow-up-right workflow-card-arrow" aria-hidden="true"></i></div>
