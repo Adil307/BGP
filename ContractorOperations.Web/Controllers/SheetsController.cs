@@ -365,7 +365,9 @@ public class SheetsController : Controller
 
         foreach (var column in columns)
         {
-            if (!column.IsRequired || IsSystemManagedColumn(column)) continue;
+            if (!column.IsRequired || IsSystemManagedColumn(column) ||
+                (column.Name.Equals("Service Approval No", StringComparison.OrdinalIgnoreCase) &&
+                 new[] { "Service Business", "Purchase Order", "Service Logistics", "Invoice Reception" }.Contains(sheet.Name, StringComparer.OrdinalIgnoreCase))) continue;
             var key = $"col_{column.Id}";
             var valueForValidation = column.ColumnType == SheetColumnType.File
                 ? form.Files.GetFile(key)?.FileName
@@ -521,7 +523,9 @@ public class SheetsController : Controller
         ApplySheetDefaults(sheet, columns, submittedValues);
         foreach (var column in columns)
         {
-            if (!column.IsRequired || IsSystemManagedColumn(column)) continue;
+            if (!column.IsRequired || IsSystemManagedColumn(column) ||
+                (column.Name.Equals("Service Approval No", StringComparison.OrdinalIgnoreCase) &&
+                 new[] { "Service Business", "Purchase Order", "Service Logistics", "Invoice Reception" }.Contains(sheet.Name, StringComparer.OrdinalIgnoreCase))) continue;
             var current = row.Cells.FirstOrDefault(x => x.SheetColumnId == column.Id)?.Value;
             var valueForValidation = column.ColumnType == SheetColumnType.File
                 ? form.Files.GetFile($"col_{column.Id}")?.FileName ?? current
