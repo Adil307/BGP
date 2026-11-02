@@ -507,7 +507,14 @@ public class SheetsController : Controller
             }
             else
             {
-                submittedValues[column.Id] = form[$"col_{column.Id}"].ToString().Trim();
+                // Hidden legacy Service Approval references must survive edits unchanged.
+                submittedValues[column.Id] = column.Name.Equals("Service Approval No", StringComparison.OrdinalIgnoreCase)
+                    && (sheet.Name.Equals("Service Business", StringComparison.OrdinalIgnoreCase)
+                        || sheet.Name.Equals("Purchase Order", StringComparison.OrdinalIgnoreCase)
+                        || sheet.Name.Equals("Service Logistics", StringComparison.OrdinalIgnoreCase)
+                        || sheet.Name.Equals("Invoice Reception", StringComparison.OrdinalIgnoreCase))
+                    ? current
+                    : form[$"col_{column.Id}"].ToString().Trim();
             }
         }
 
